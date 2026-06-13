@@ -39,7 +39,7 @@ app.get('/api/debug/count', async (req, res) => {
     }
 });
 
-// ── BEST VERSION: AGGREGATION WITHOUT ROW LIMIT ─────────────────────────────
+// ── RELIABLE STATS SUMMARY ───────────────────────────────────────────────────
 app.get('/api/stats/summary', async (req, res) => {
   if (!supabase) {
     return res.json({ totalMatches: 0, totalKills: "—", totalDamage: "—", totalHealing: "—" });
@@ -53,14 +53,10 @@ app.get('/api/stats/summary', async (req, res) => {
       .from('wargame_matches')
       .select('*', { count: 'exact', head: true });
 
-    // Efficient aggregation using Supabase sum()
+    // Full aggregation query
     let query = supabase
       .from('player_match_stats')
-      .select(`
-        kills_sum: kills,
-        damage_sum: damage_dealt,
-        healing_sum: healing
-      `, { head: true });   // head: true = don't return rows, just aggregates
+      .select('kills, damage_dealt, healing');
 
     if (guildFilter) {
       query = query.eq('guild_name', guildFilter);
@@ -68,17 +64,26 @@ app.get('/api/stats/summary', async (req, res) => {
       query = query.in('guild_name', ['FTP', 'PUSH', 'House Regard', 'Best Regards']);
     }
 
-    const { data, error } = await query;
+    const { data, error } = await query.range(0, 20000);
 
     if (error) throw error;
 
-    const row = data?.[0] || {};
+    let totalKills = 0;
+    let totalDamage = 0;
+    let totalHealing = 0;
+
+    data.forEach(row => {
+      totalKills += Number(row.kills) || 0;
+      totalDamage += Number(row.damage_dealt) || 0;
+      totalHealing += Number(row.healing) || 0;
+    });
 
     res.json({
       totalMatches: totalMatches || 0,
-      totalKills: Number(row.kills_sum || 0).toLocaleString(),
-      totalDamage: (Number(row.damage_sum || 0) / 1000000).toFixed(1) + "M",
-      totalHealing: (Number(row.healing_sum || 0) / 1000000).toFixed(1) + "M",
+      totalKills: totalKills.toLocaleString(),
+      totalDamage: (totalDamage / 1000000).toFixed(1) + "M",
+      totalHealing: (totalHealing / 1000000).toFixed(1) + "M",
+      processedRows: data.length,
       filteredGuild: guildFilter || "All Tracked Guilds"
     });
 
