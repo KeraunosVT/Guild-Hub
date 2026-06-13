@@ -39,40 +39,52 @@ app.get('/api/debug/count', async (req, res) => {
     }
 });
 
-// ── IMPROVED STATS SUMMARY ───────────────────────────────────────────────────
+// ── IMPROVED STATS SUMMARY WITH GUILD FILTER ─────────────────────────────────
 app.get('/api/stats/summary', async (req, res) => {
   if (!supabase) {
     return res.json({ totalMatches: 0, totalKills: "—", totalDamage: "—", totalHealing: "—" });
   }
 
   try {
-    // Total Matches
-    const { count: totalMatches } = await supabase
-      .from('wargame_matches')
-      .select('*', { count: 'exact', head: true });
+    const guildFilter = req.query.guild; // e.g. ?guild=FTP or ?guild=House Regard
 
-    // Aggregate stats from player_match_stats
-    const { data: aggregates, error } = await supabase
+    let query = supabase
       .from('player_match_stats')
-      .select('kills, damage_dealt, healing');
+      .select('kills, damage_dealt, healing, guild_name');
+
+    // Apply guild filter if provided
+    if (guildFilter) {
+      query = query.eq('guild_name', guildFilter);
+    } else {
+      // Default to your main guilds if no filter
+      query = query.in('guild_name', ['FTP', 'PUSH', 'House Regard', 'Best Regards']);
+    }
+
+    const { data: statsData, error } = await query;
+
+    if (error) throw error;
 
     let totalKills = 0;
     let totalDamage = 0;
     let totalHealing = 0;
 
-    if (aggregates && aggregates.length > 0) {
-      aggregates.forEach(row => {
-        totalKills += row.kills || 0;
-        totalDamage += row.damage_dealt || 0;
-        totalHealing += row.healing || 0;
-      });
-    }
+    statsData.forEach(row => {
+      totalKills += row.kills || 0;
+      totalDamage += row.damage_dealt || 0;
+      totalHealing += row.healing || 0;
+    });
+
+    // Get total matches (from wargame_matches or distinct match_id)
+    const { count: totalMatches } = await supabase
+      .from('wargame_matches')
+      .select('*', { count: 'exact', head: true });
 
     res.json({
       totalMatches: totalMatches || 0,
       totalKills: totalKills.toLocaleString(),
-      totalDamage: (totalDamage / 1000000).toFixed(1) + "M",   // e.g., 842.3M
-      totalHealing: (totalHealing / 1000000).toFixed(1) + "M"
+      totalDamage: (totalDamage / 1000000).toFixed(1) + "M",
+      totalHealing: (totalHealing / 1000000).toFixed(1) + "M",
+      filteredGuild: guildFilter || "All Tracked Guilds"
     });
   } catch (err) {
     console.error('Stats summary error:', err);
