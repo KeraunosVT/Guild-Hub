@@ -1,4 +1,4 @@
-import { Trophy, Users, Sword, TrendingUp, Calendar } from 'lucide-react';
+import { Trophy, Users, Sword } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
@@ -11,11 +11,12 @@ export default function Home() {
     const fetchData = async () => {
       try {
         const [statsRes, matchesRes] = await Promise.all([
-          axios.get('/api/stats/summary'),
-          axios.get('/api/matches/recent?limit=6')
+          axios.get('/api/stats/summary').catch(() => ({ data: {} })),
+          axios.get('/api/matches/recent?limit=6').catch(() => ({ data: [] }))
         ]);
+        
         setStats(statsRes.data);
-        setRecentMatches(matchesRes.data);
+        setRecentMatches(Array.isArray(matchesRes.data) ? matchesRes.data : []);
       } catch (err) {
         console.error('Failed to load data:', err);
       } finally {
@@ -52,7 +53,7 @@ export default function Home() {
               Dashboard
             </a>
             <a href="/war-room" 
-               className="px-12 py-5 border-2 border-[#c9973a] hover:bg-[#c9973a]/10 text-[#e8c96b] font-bold text-xl rounded-2xl transition">
+               className="px-12 py-5 border-2 border-[#c9973a] hover:bg-white/5 text-[#e8c96b] font-bold text-xl rounded-2xl transition">
               War Room
             </a>
           </div>
@@ -90,30 +91,35 @@ export default function Home() {
           <h2 className="text-3xl font-bold text-[#e8c96b] mb-12 text-center">Recent Matches</h2>
           
           {loading ? (
-            <p className="text-center text-[#9c9384]">Loading matches...</p>
+            <p className="text-center text-[#9c9384]">Loading recent matches...</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {recentMatches.length > 0 ? recentMatches.map(match => (
-                <div key={match.id} className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-2xl p-6 hover:border-[#e8c96b] transition">
-                  <div className="text-[#c9973a] text-sm mb-2">{new Date(match.date).toLocaleDateString()}</div>
-                  <div className="font-semibold text-lg mb-4">{match.title}</div>
-                  <div className="grid grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <div className="text-[#e8c96b]">{match.kills}</div>
-                      <div className="text-[#9c9384]">Kills</div>
+              {recentMatches.length > 0 ? (
+                recentMatches.map((match) => (
+                  <div key={match.id || Math.random()} 
+                       className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-2xl p-6 hover:border-[#e8c96b] transition">
+                    <div className="text-[#c9973a] text-sm mb-2">
+                      {match.date ? new Date(match.date).toLocaleDateString() : 'Recent'}
                     </div>
-                    <div>
-                      <div className="text-[#e8c96b]">{match.damage}</div>
-                      <div className="text-[#9c9384]">Damage</div>
-                    </div>
-                    <div>
-                      <div className="text-[#e8c96b]">{match.healing}</div>
-                      <div className="text-[#9c9384]">Healing</div>
+                    <div className="font-semibold text-lg mb-4 line-clamp-2">{match.title || 'Match'}</div>
+                    <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div>
+                        <div className="text-[#e8c96b]">{match.kills || '—'}</div>
+                        <div className="text-[#9c9384]">Kills</div>
+                      </div>
+                      <div>
+                        <div className="text-[#e8c96b]">{match.damage || '—'}</div>
+                        <div className="text-[#9c9384]">Damage</div>
+                      </div>
+                      <div>
+                        <div className="text-[#e8c96b]">{match.healing || '—'}</div>
+                        <div className="text-[#9c9384]">Healing</div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )) : (
-                <p className="text-center text-[#9c9384] col-span-3">No matches recorded yet.</p>
+                ))
+              ) : (
+                <p className="text-center text-[#9c9384] col-span-3 py-12">No matches recorded yet.</p>
               )}
             </div>
           )}
