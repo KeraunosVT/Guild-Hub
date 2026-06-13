@@ -39,34 +39,50 @@ app.get('/api/debug/count', async (req, res) => {
     }
 });
 
-// Stats Summary - Updated to use wargame_matches
+// ── IMPROVED STATS SUMMARY ───────────────────────────────────────────────────
 app.get('/api/stats/summary', async (req, res) => {
-    if (!supabase) {
-        return res.json({ totalMatches: 0, totalKills: "—", totalDamage: "—", totalHealing: "—" });
-    }
-    try {
-        // Count from wargame_matches as requested
-        const { count: totalMatches, error: matchError } = await supabase
-            .from('wargame_matches')
-            .select('*', { count: 'exact', head: true });
+  if (!supabase) {
+    return res.json({ totalMatches: 0, totalKills: "—", totalDamage: "—", totalHealing: "—" });
+  }
 
-        if (matchError) throw matchError;
+  try {
+    // Total Matches
+    const { count: totalMatches } = await supabase
+      .from('wargame_matches')
+      .select('*', { count: 'exact', head: true });
 
-        res.json({
-            totalMatches: totalMatches || 0,
-            totalKills: "—",
-            totalDamage: "—",
-            totalHealing: "—"
-        });
-    } catch (err) {
-        console.error('Stats summary error:', err);
-        res.json({
-            totalMatches: 0,
-            totalKills: "—",
-            totalDamage: "—",
-            totalHealing: "—"
-        });
+    // Aggregate stats from player_match_stats
+    const { data: aggregates, error } = await supabase
+      .from('player_match_stats')
+      .select('kills, damage_dealt, healing');
+
+    let totalKills = 0;
+    let totalDamage = 0;
+    let totalHealing = 0;
+
+    if (aggregates && aggregates.length > 0) {
+      aggregates.forEach(row => {
+        totalKills += row.kills || 0;
+        totalDamage += row.damage_dealt || 0;
+        totalHealing += row.healing || 0;
+      });
     }
+
+    res.json({
+      totalMatches: totalMatches || 0,
+      totalKills: totalKills.toLocaleString(),
+      totalDamage: (totalDamage / 1000000).toFixed(1) + "M",   // e.g., 842.3M
+      totalHealing: (totalHealing / 1000000).toFixed(1) + "M"
+    });
+  } catch (err) {
+    console.error('Stats summary error:', err);
+    res.json({
+      totalMatches: 0,
+      totalKills: "—",
+      totalDamage: "—",
+      totalHealing: "—"
+    });
+  }
 });
 
 // Recent Matches
