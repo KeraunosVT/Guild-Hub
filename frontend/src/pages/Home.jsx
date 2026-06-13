@@ -128,40 +128,49 @@ export default function Home() {
       {recentMatches.length > 0 ? recentMatches.map((match, index) => (
         <div key={match.id || index} 
              className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-2xl p-6 hover:border-[#e8c96b] transition-all">
-          <div className="text-[#c9973a] text-sm mb-2">
-            {match.match_date ? new Date(match.match_date).toLocaleDateString() : 'Recent'}
-          </div>
-          <div className="font-semibold text-lg mb-4 line-clamp-2">{match.title || 'Wargame'}</div>
           
-          <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-4 text-center text-sm">
-              <div>
-                <div className="text-[#e8c96b] font-bold">{match.kills || '—'}</div>
-                <div className="text-[#9c9384]">Kills</div>
-              </div>
-              <div>
-                <div className="text-[#e8c96b] font-bold">{match.damage || '—'}</div>
-                <div className="text-[#9c9384]">Damage</div>
-              </div>
-              <div>
-                <div className="text-[#e8c96b] font-bold">{match.healing || '—'}</div>
-                <div className="text-[#9c9384]">Healing</div>
-              </div>
-            </div>
-
-            {/* Kill Difference */}
-            {match.killDifference !== undefined && (
-              <div className="pt-4 border-t border-[#c9973a]/10 text-center">
-                <div className="text-[#c9973a] text-xs mb-1">KILL DIFFERENCE</div>
-                <div className="text-2xl font-bold text-[#e8c96b]">
-                  +{match.killDifference}
-                </div>
-                <div className="text-xs text-[#9c9384]">
-                  {match.winningGuild ? `(${match.winningGuild} leads)` : ''}
-                </div>
-              </div>
-            )}
+          <div className="text-[#c9973a] text-sm mb-3">
+            {match.match_date ? new Date(match.match_date).toLocaleDateString('en-US', { 
+              month: 'short', day: 'numeric', year: 'numeric' 
+            }) : 'Recent'}
           </div>
+          
+          <div className="font-semibold text-lg mb-6 line-clamp-2">{match.title || 'Wargame Match'}</div>
+
+          {/* Main Stats */}
+          <div className="grid grid-cols-3 gap-4 text-center mb-6">
+            <div>
+              <div className="text-[#e8c96b] font-bold text-xl">{match.kills?.toLocaleString() || '—'}</div>
+              <div className="text-xs text-[#9c9384]">Kills</div>
+            </div>
+            <div>
+              <div className="text-[#e8c96b] font-bold text-xl">
+                {match.damage ? (match.damage / 1000000).toFixed(1) + "M" : '—'}
+              </div>
+              <div className="text-xs text-[#9c9384]">Damage</div>
+            </div>
+            <div>
+              <div className="text-[#e8c96b] font-bold text-xl">
+                {match.healing ? (match.healing / 1000000).toFixed(1) + "M" : '—'}
+              </div>
+              <div className="text-xs text-[#9c9384]">Healing</div>
+            </div>
+          </div>
+
+          {/* Kill Difference */}
+          {match.killDifference !== undefined && match.killDifference > 0 && (
+            <div className="pt-4 border-t border-[#c9973a]/10 text-center">
+              <div className="text-[#c9973a] text-xs mb-1">KILL DIFFERENCE</div>
+              <div className="text-2xl font-bold text-[#e8c96b]">
+                +{match.killDifference}
+              </div>
+              {match.winningGuild && (
+                <div className="text-xs text-[#9c9384] mt-1">
+                  {match.winningGuild} leads
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )) : (
         <div className="col-span-3 text-center py-12 text-[#9c9384]">
