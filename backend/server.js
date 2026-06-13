@@ -84,7 +84,7 @@ app.get('/api/stats/summary', async (req, res) => {
   }
 });
 
-// ── REAL RECENT MATCHES WITH FULL STATS ─────────────────────────────────────
+// ── REAL RECENT MATCHES WITH STATS ──────────────────────────────────────────
 app.get('/api/matches/recent', async (req, res) => {
   if (!supabase) return res.json([]);
 
@@ -100,22 +100,24 @@ app.get('/api/matches/recent', async (req, res) => {
     if (error) throw error;
 
     const enriched = await Promise.all(matches.map(async (match) => {
-      const { data: players } = await supabase
+      const { data: players, error: pError } = await supabase
         .from('player_match_stats')
-        .select('guild_name, kills, damage_dealt, healing, player_name')
+        .select('guild_name, kills, damage_dealt, healing')
         .eq('match_id', match.id);
+
+      if (pError) {
+        console.error('Player stats error for match', match.id, pError);
+        return { ...match, kills: 0, damage: 0, healing: 0, killDifference: 0 };
+      }
 
       const guildStats = {};
 
       players.forEach(p => {
-        const g = p.guild_name;
-        if (!guildStats[g]) {
-          guildStats[g] = { kills: 0, damage: 0, healing: 0, players: [] };
-        }
+        const g = p.guild_name || 'Unknown';
+        if (!guildStats[g]) guildStats[g] = { kills: 0, damage: 0, healing: 0 };
         guildStats[g].kills += Number(p.kills) || 0;
         guildStats[g].damage += Number(p.damage_dealt) || 0;
         guildStats[g].healing += Number(p.healing) || 0;
-        guildStats[g].players.push(p.player_name);
       });
 
       const guilds = Object.keys(guildStats);
@@ -131,10 +133,11 @@ app.get('/api/matches/recent', async (req, res) => {
 
       return {
         ...match,
-        guildStats,
+        kills: Object.values(guildStats).reduce((sum, g) => sum + g.kills, 0),
+        damage: Object.values(guildStats).reduce((sum, g) => sum + g.damage, 0),
+        healing: Object.values(guildStats).reduce((sum, g) => sum + g.healing, 0),
         killDifference,
-        winningGuild,
-        playerCount: players.length
+        winningGuild
       };
     }));
 
