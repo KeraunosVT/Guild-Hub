@@ -39,7 +39,7 @@ app.get('/api/debug/count', async (req, res) => {
     }
 });
 
-// ── EFFICIENT STATS SUMMARY USING AGGREGATION ───────────────────────────────
+// ── BEST VERSION: AGGREGATION WITHOUT ROW LIMIT ─────────────────────────────
 app.get('/api/stats/summary', async (req, res) => {
   if (!supabase) {
     return res.json({ totalMatches: 0, totalKills: "—", totalDamage: "—", totalHealing: "—" });
@@ -53,41 +53,32 @@ app.get('/api/stats/summary', async (req, res) => {
       .from('wargame_matches')
       .select('*', { count: 'exact', head: true });
 
-    // Efficient aggregation (no row limit issue)
-    let statsQuery = supabase
+    // Efficient aggregation using Supabase sum()
+    let query = supabase
       .from('player_match_stats')
       .select(`
-        kills,
-        damage_dealt,
-        healing
-      `);
+        kills_sum: kills,
+        damage_sum: damage_dealt,
+        healing_sum: healing
+      `, { head: true });   // head: true = don't return rows, just aggregates
 
     if (guildFilter) {
-      statsQuery = statsQuery.eq('guild_name', guildFilter);
+      query = query.eq('guild_name', guildFilter);
     } else {
-      statsQuery = statsQuery.in('guild_name', ['FTP', 'PUSH', 'House Regard', 'Best Regards']);
+      query = query.in('guild_name', ['FTP', 'PUSH', 'House Regard', 'Best Regards']);
     }
 
-    const { data, error } = await statsQuery;
+    const { data, error } = await query;
 
     if (error) throw error;
 
-    let totalKills = 0;
-    let totalDamage = 0;
-    let totalHealing = 0;
-
-    data.forEach(row => {
-      totalKills += Number(row.kills) || 0;
-      totalDamage += Number(row.damage_dealt) || 0;
-      totalHealing += Number(row.healing) || 0;
-    });
+    const row = data?.[0] || {};
 
     res.json({
       totalMatches: totalMatches || 0,
-      totalKills: totalKills.toLocaleString(),
-      totalDamage: (totalDamage / 1000000).toFixed(1) + "M",
-      totalHealing: (totalHealing / 1000000).toFixed(1) + "M",
-      processedRows: data.length,
+      totalKills: Number(row.kills_sum || 0).toLocaleString(),
+      totalDamage: (Number(row.damage_sum || 0) / 1000000).toFixed(1) + "M",
+      totalHealing: (Number(row.healing_sum || 0) / 1000000).toFixed(1) + "M",
       filteredGuild: guildFilter || "All Tracked Guilds"
     });
 
@@ -101,6 +92,7 @@ app.get('/api/stats/summary', async (req, res) => {
     });
   }
 });
+
 // Recent Matches
 app.get('/api/matches/recent', async (req, res) => {
     if (!supabase) return res.json([]);
