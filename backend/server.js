@@ -39,7 +39,7 @@ app.get('/api/debug/count', async (req, res) => {
     }
 });
 
-// ── ROBUST STATS SUMMARY ─────────────────────────────────────────────────────
+// ── EFFICIENT STATS SUMMARY USING AGGREGATION ───────────────────────────────
 app.get('/api/stats/summary', async (req, res) => {
   if (!supabase) {
     return res.json({ totalMatches: 0, totalKills: "—", totalDamage: "—", totalHealing: "—" });
@@ -53,18 +53,22 @@ app.get('/api/stats/summary', async (req, res) => {
       .from('wargame_matches')
       .select('*', { count: 'exact', head: true });
 
-    // Full aggregation using Supabase RPC-like behavior with range
-    let query = supabase
+    // Efficient aggregation (no row limit issue)
+    let statsQuery = supabase
       .from('player_match_stats')
-      .select('kills, damage_dealt, healing');
+      .select(`
+        kills,
+        damage_dealt,
+        healing
+      `);
 
     if (guildFilter) {
-      query = query.eq('guild_name', guildFilter);
+      statsQuery = statsQuery.eq('guild_name', guildFilter);
     } else {
-      query = query.in('guild_name', ['FTP', 'PUSH', 'House Regard', 'Best Regards']);
+      statsQuery = statsQuery.in('guild_name', ['FTP', 'PUSH', 'House Regard', 'Best Regards']);
     }
 
-    const { data: allRows, error } = await query.range(0, 20000); // Increased limit
+    const { data, error } = await statsQuery;
 
     if (error) throw error;
 
@@ -72,20 +76,18 @@ app.get('/api/stats/summary', async (req, res) => {
     let totalDamage = 0;
     let totalHealing = 0;
 
-    allRows.forEach(row => {
+    data.forEach(row => {
       totalKills += Number(row.kills) || 0;
       totalDamage += Number(row.damage_dealt) || 0;
       totalHealing += Number(row.healing) || 0;
     });
-
-    console.log(`Processed ${allRows.length} rows for stats`);
 
     res.json({
       totalMatches: totalMatches || 0,
       totalKills: totalKills.toLocaleString(),
       totalDamage: (totalDamage / 1000000).toFixed(1) + "M",
       totalHealing: (totalHealing / 1000000).toFixed(1) + "M",
-      processedRows: allRows.length,
+      processedRows: data.length,
       filteredGuild: guildFilter || "All Tracked Guilds"
     });
 
@@ -99,7 +101,6 @@ app.get('/api/stats/summary', async (req, res) => {
     });
   }
 });
-
 // Recent Matches
 app.get('/api/matches/recent', async (req, res) => {
     if (!supabase) return res.json([]);
