@@ -10,6 +10,63 @@ console.log("✅ Server starting...");
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Server is alive' });
 });
+// ── STATS SUMMARY ────────────────────────────────────────────────────────────
+app.get('/api/stats/summary', async (req, res) => {
+  try {
+    const { count: totalMatches, error: countError } = await supabase
+      .from('player_match_stats')
+      .select('*', { count: 'exact', head: true });
+
+    const { data: totals, error: totalsError } = await supabase
+      .from('player_match_stats')
+      .select('kills, damage_dealt, healing')
+      .limit(1); // We can sum later if needed
+
+    if (countError) throw countError;
+
+    res.json({
+      totalMatches: totalMatches || 0,
+      totalKills: "—",      // We'll improve this later
+      totalDamage: "—",
+      totalHealing: "—"
+    });
+  } catch (err) {
+    console.error('Summary error:', err);
+    res.json({
+      totalMatches: 0,
+      totalKills: "—",
+      totalDamage: "—",
+      totalHealing: "—"
+    });
+  }
+});
+
+// ── RECENT MATCHES ───────────────────────────────────────────────────────────
+app.get('/api/matches/recent', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 6;
+
+    const { data, error } = await supabase
+      .from('wargame_matches')
+      .select(`
+        *,
+        player_match_stats (
+          kills,
+          damage_dealt,
+          healing
+        )
+      `)
+      .order('match_date', { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+
+    res.json(data || []);
+  } catch (err) {
+    console.error('Recent matches error:', err);
+    res.status(500).json([]);
+  }
+});
 
 // Serve React frontend in production
 if (process.env.NODE_ENV === 'production') {
