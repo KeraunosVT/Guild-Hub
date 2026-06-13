@@ -1,23 +1,29 @@
-import { Trophy, Target, Heart, Sword } from 'lucide-react';
+import { Trophy, Target, Heart, Sword, Calendar } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
 export default function Home() {
   const [stats, setStats] = useState({});
+  const [recentMatches, setRecentMatches] = useState([]);
   const [selectedGuild, setSelectedGuild] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const guilds = ['FTP', 'PUSH', 'House Regard', 'Best Regards'];
 
-  const fetchStats = async (guild = null) => {
+  const fetchData = async (guild = null) => {
     setLoading(true);
     try {
-      const url = guild 
+      const statsUrl = guild 
         ? `/api/stats/summary?guild=${encodeURIComponent(guild)}` 
         : '/api/stats/summary';
       
-      const res = await axios.get(url);
-      setStats(res.data);
+      const [statsRes, matchesRes] = await Promise.all([
+        axios.get(statsUrl),
+        axios.get('/api/matches/recent?limit=6')
+      ]);
+
+      setStats(statsRes.data);
+      setRecentMatches(matchesRes.data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -26,12 +32,12 @@ export default function Home() {
   };
 
   useEffect(() => {
-    fetchStats(selectedGuild);
+    fetchData(selectedGuild);
   }, [selectedGuild]);
 
   return (
     <div className="min-h-screen bg-[#07060a] text-[#e8e2d4]">
-      {/* Smaller Hero */}
+      {/* Hero */}
       <section className="relative min-h-[65vh] flex items-center justify-center overflow-hidden border-b border-[#c9973a]/20">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,#c9973a15_0%,transparent_70%)]" />
         
@@ -81,7 +87,7 @@ export default function Home() {
       </div>
 
       {/* Stats Cards */}
-      <section className="py-16 bg-[#0a0810]">
+      <section className="py-12 bg-[#0a0810]">
         <div className="max-w-6xl mx-auto px-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             <div className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-2xl p-8 text-center">
@@ -107,6 +113,48 @@ export default function Home() {
               <div className="text-5xl font-bold text-[#e8c96b]">{stats.totalHealing || "0.0M"}</div>
               <div className="text-sm tracking-widest text-[#9c9384] mt-2">TOTAL HEALING</div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Recent Matches */}
+      <section className="py-20 px-6 bg-[#07060a]">
+        <div className="max-w-6xl mx-auto">
+          <h2 className="text-3xl font-bold text-[#e8c96b] mb-12 text-center flex items-center gap-3 justify-center">
+            <Calendar className="w-8 h-8" /> Recent Matches
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {recentMatches.length > 0 ? recentMatches.map((match, index) => (
+              <div key={match.id || index} 
+                   className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-2xl p-6 hover:border-[#e8c96b] transition-all">
+                <div className="text-[#c9973a] text-sm mb-3">
+                  {match.match_date ? new Date(match.match_date).toLocaleDateString('en-US', { 
+                    month: 'short', day: 'numeric', year: 'numeric' 
+                  }) : 'Recent'}
+                </div>
+                <div className="font-semibold text-lg mb-6 line-clamp-2">{match.title || 'Wargame Match'}</div>
+                
+                <div className="grid grid-cols-3 gap-4 text-center text-sm">
+                  <div>
+                    <div className="text-[#e8c96b] font-bold">{match.kills || '—'}</div>
+                    <div className="text-[#9c9384]">Kills</div>
+                  </div>
+                  <div>
+                    <div className="text-[#e8c96b] font-bold">{match.damage || '—'}</div>
+                    <div className="text-[#9c9384]">Damage</div>
+                  </div>
+                  <div>
+                    <div className="text-[#e8c96b] font-bold">{match.healing || '—'}</div>
+                    <div className="text-[#9c9384]">Healing</div>
+                  </div>
+                </div>
+              </div>
+            )) : (
+              <div className="col-span-3 text-center py-12 text-[#9c9384]">
+                No matches recorded yet.
+              </div>
+            )}
           </div>
         </div>
       </section>
