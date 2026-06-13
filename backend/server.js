@@ -39,28 +39,34 @@ app.get('/api/debug/count', async (req, res) => {
     }
 });
 
-// ── IMPROVED STATS SUMMARY WITH GUILD FILTER ─────────────────────────────────
+// ── STATS SUMMARY - HANDLES LARGE DATASETS ───────────────────────────────────
 app.get('/api/stats/summary', async (req, res) => {
   if (!supabase) {
     return res.json({ totalMatches: 0, totalKills: "—", totalDamage: "—", totalHealing: "—" });
   }
 
   try {
-    const guildFilter = req.query.guild; // e.g. ?guild=FTP or ?guild=House Regard
+    const guildFilter = req.query.guild;
 
+    // 1. Total Matches
+    const { count: totalMatches } = await supabase
+      .from('wargame_matches')
+      .select('*', { count: 'exact', head: true });
+
+    // 2. Aggregate all player stats (bypasses 1000 row limit)
     let query = supabase
       .from('player_match_stats')
-      .select('kills, damage_dealt, healing, guild_name');
+      .select('kills, damage_dealt, healing');
 
-    // Apply guild filter if provided
     if (guildFilter) {
       query = query.eq('guild_name', guildFilter);
     } else {
-      // Default to your main guilds if no filter
       query = query.in('guild_name', ['FTP', 'PUSH', 'House Regard', 'Best Regards']);
     }
 
-    const { data: statsData, error } = await query;
+    // Use range to get all rows (in chunks of 1000)
+    const { data: allStats, error } = await query
+      .range(0, 9999);   // This gets up to 10,000 rows
 
     if (error) throw error;
 
@@ -68,24 +74,21 @@ app.get('/api/stats/summary', async (req, res) => {
     let totalDamage = 0;
     let totalHealing = 0;
 
-    statsData.forEach(row => {
-      totalKills += row.kills || 0;
-      totalDamage += row.damage_dealt || 0;
-      totalHealing += row.healing || 0;
+    allStats.forEach(row => {
+      totalKills += Number(row.kills) || 0;
+      totalDamage += Number(row.damage_dealt) || 0;
+      totalHealing += Number(row.healing) || 0;
     });
-
-    // Get total matches (from wargame_matches or distinct match_id)
-    const { count: totalMatches } = await supabase
-      .from('wargame_matches')
-      .select('*', { count: 'exact', head: true });
 
     res.json({
       totalMatches: totalMatches || 0,
       totalKills: totalKills.toLocaleString(),
       totalDamage: (totalDamage / 1000000).toFixed(1) + "M",
       totalHealing: (totalHealing / 1000000).toFixed(1) + "M",
-      filteredGuild: guildFilter || "All Tracked Guilds"
+      filteredGuild: guildFilter || "All Main Guilds",
+      processedRows: allStats.length
     });
+
   } catch (err) {
     console.error('Stats summary error:', err);
     res.json({
