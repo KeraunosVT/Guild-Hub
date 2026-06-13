@@ -39,7 +39,7 @@ app.get('/api/debug/count', async (req, res) => {
     }
 });
 
-// ── STATS SUMMARY - HANDLES LARGE DATASETS ───────────────────────────────────
+// ── ROBUST STATS SUMMARY ─────────────────────────────────────────────────────
 app.get('/api/stats/summary', async (req, res) => {
   if (!supabase) {
     return res.json({ totalMatches: 0, totalKills: "—", totalDamage: "—", totalHealing: "—" });
@@ -48,12 +48,12 @@ app.get('/api/stats/summary', async (req, res) => {
   try {
     const guildFilter = req.query.guild;
 
-    // 1. Total Matches
+    // Total Matches
     const { count: totalMatches } = await supabase
       .from('wargame_matches')
       .select('*', { count: 'exact', head: true });
 
-    // 2. Aggregate all player stats (bypasses 1000 row limit)
+    // Full aggregation using Supabase RPC-like behavior with range
     let query = supabase
       .from('player_match_stats')
       .select('kills, damage_dealt, healing');
@@ -64,9 +64,7 @@ app.get('/api/stats/summary', async (req, res) => {
       query = query.in('guild_name', ['FTP', 'PUSH', 'House Regard', 'Best Regards']);
     }
 
-    // Use range to get all rows (in chunks of 1000)
-    const { data: allStats, error } = await query
-      .range(0, 9999);   // This gets up to 10,000 rows
+    const { data: allRows, error } = await query.range(0, 20000); // Increased limit
 
     if (error) throw error;
 
@@ -74,23 +72,25 @@ app.get('/api/stats/summary', async (req, res) => {
     let totalDamage = 0;
     let totalHealing = 0;
 
-    allStats.forEach(row => {
+    allRows.forEach(row => {
       totalKills += Number(row.kills) || 0;
       totalDamage += Number(row.damage_dealt) || 0;
       totalHealing += Number(row.healing) || 0;
     });
+
+    console.log(`Processed ${allRows.length} rows for stats`);
 
     res.json({
       totalMatches: totalMatches || 0,
       totalKills: totalKills.toLocaleString(),
       totalDamage: (totalDamage / 1000000).toFixed(1) + "M",
       totalHealing: (totalHealing / 1000000).toFixed(1) + "M",
-      filteredGuild: guildFilter || "All Main Guilds",
-      processedRows: allStats.length
+      processedRows: allRows.length,
+      filteredGuild: guildFilter || "All Tracked Guilds"
     });
 
   } catch (err) {
-    console.error('Stats summary error:', err);
+    console.error('Stats error:', err);
     res.json({
       totalMatches: 0,
       totalKills: "—",
