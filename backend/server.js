@@ -84,35 +84,38 @@ app.get('/api/stats/summary', async (req, res) => {
   }
 });
 
-// ── REAL RECENT MATCHES WITH KILL DIFFERENCE ─────────────────────────────────
+// ── REAL RECENT MATCHES WITH FULL STATS ─────────────────────────────────────
 app.get('/api/matches/recent', async (req, res) => {
   if (!supabase) return res.json([]);
 
   try {
     const limit = parseInt(req.query.limit) || 6;
 
-    // Get recent matches
-    const { data: matches, error: matchError } = await supabase
+    const { data: matches, error } = await supabase
       .from('wargame_matches')
       .select('*')
       .order('match_date', { ascending: false })
       .limit(limit);
 
-    if (matchError) throw matchError;
+    if (error) throw error;
 
-    // Enrich each match with player stats and kill difference
     const enriched = await Promise.all(matches.map(async (match) => {
       const { data: players } = await supabase
         .from('player_match_stats')
-        .select('guild_name, kills, player_name')
+        .select('guild_name, kills, damage_dealt, healing, player_name')
         .eq('match_id', match.id);
 
       const guildStats = {};
 
       players.forEach(p => {
-        if (!guildStats[p.guild_name]) guildStats[p.guild_name] = { kills: 0, players: [] };
-        guildStats[p.guild_name].kills += Number(p.kills) || 0;
-        guildStats[p.guild_name].players.push(p.player_name);
+        const g = p.guild_name;
+        if (!guildStats[g]) {
+          guildStats[g] = { kills: 0, damage: 0, healing: 0, players: [] };
+        }
+        guildStats[g].kills += Number(p.kills) || 0;
+        guildStats[g].damage += Number(p.damage_dealt) || 0;
+        guildStats[g].healing += Number(p.healing) || 0;
+        guildStats[g].players.push(p.player_name);
       });
 
       const guilds = Object.keys(guildStats);
@@ -120,10 +123,10 @@ app.get('/api/matches/recent', async (req, res) => {
       let winningGuild = null;
 
       if (guilds.length >= 2) {
-        const killsA = guildStats[guilds[0]].kills;
-        const killsB = guildStats[guilds[1]].kills;
-        killDifference = Math.abs(killsA - killsB);
-        winningGuild = killsA > killsB ? guilds[0] : guilds[1];
+        const g1 = guilds[0];
+        const g2 = guilds[1];
+        killDifference = Math.abs(guildStats[g1].kills - guildStats[g2].kills);
+        winningGuild = guildStats[g1].kills > guildStats[g2].kills ? g1 : g2;
       }
 
       return {
