@@ -13,14 +13,14 @@ console.log("✅ Server started successfully");
 // ── SUPABASE SETUP ───────────────────────────────────────────────────────────
 let supabase = null;
 try {
-    const { createClient } = require('@supabase/supabase-js');
-    supabase = createClient(
-        process.env.SUPABASE_URL,
-        process.env.SUPABASE_SERVICE_KEY
-    );
-    console.log("✅ Supabase client initialized");
+  const { createClient } = require('@supabase/supabase-js');
+  supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_KEY
+  );
+  console.log("✅ Supabase client initialized");
 } catch (e) {
-    console.error("❌ Supabase failed to initialize:", e.message);
+  console.error("❌ Supabase failed to initialize:", e.message);
 }
 
 // Health check
@@ -28,18 +28,18 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
 // Debug count
 app.get('/api/debug/count', async (req, res) => {
-    if (!supabase) return res.json({ error: "Supabase not initialized" });
-    try {
-        const { count, error } = await supabase
-            .from('player_match_stats')
-            .select('*', { count: 'exact', head: true });
-        res.json({ total_rows: count || 0, error: error?.message });
-    } catch (err) {
-        res.json({ error: err.message });
-    }
+  if (!supabase) return res.json({ error: "Supabase not initialized" });
+  try {
+    const { count, error } = await supabase
+      .from('player_match_stats')
+      .select('*', { count: 'exact', head: true });
+    res.json({ total_rows: count || 0, error: error?.message });
+  } catch (err) {
+    res.json({ error: err.message });
+  }
 });
 
-// ── RELIABLE STATS SUMMARY ───────────────────────────────────────────────────
+// ── STATS SUMMARY ────────────────────────────────────────────────────────────
 app.get('/api/stats/summary', async (req, res) => {
   if (!supabase) {
     return res.json({ totalMatches: 0, totalKills: "—", totalDamage: "—", totalHealing: "—" });
@@ -53,37 +53,23 @@ app.get('/api/stats/summary', async (req, res) => {
       .from('wargame_matches')
       .select('*', { count: 'exact', head: true });
 
-    // Full aggregation query
-    let query = supabase
-      .from('player_match_stats')
-      .select('kills, damage_dealt, healing');
+    // Aggregation via RPC — bypasses the 1,000-row PostgREST limit entirely
+    const { data: aggData, error: aggError } = await supabase
+      .rpc('get_stats_summary', {
+        guild_filter: guildFilter || null
+      });
 
-    if (guildFilter) {
-      query = query.eq('guild_name', guildFilter);
-    } else {
-      query = query.in('guild_name', ['FTP', 'PUSH', 'House Regard', 'Best Regards']);
-    }
+    if (aggError) throw aggError;
 
-    const { data, error } = await query.range(0, 20000);
-
-    if (error) throw error;
-
-    let totalKills = 0;
-    let totalDamage = 0;
-    let totalHealing = 0;
-
-    data.forEach(row => {
-      totalKills += Number(row.kills) || 0;
-      totalDamage += Number(row.damage_dealt) || 0;
-      totalHealing += Number(row.healing) || 0;
-    });
+    const totalKills   = Number(aggData[0]?.total_kills)   || 0;
+    const totalDamage  = Number(aggData[0]?.total_damage)  || 0;
+    const totalHealing = Number(aggData[0]?.total_healing) || 0;
 
     res.json({
-      totalMatches: totalMatches || 0,
-      totalKills: totalKills.toLocaleString(),
-      totalDamage: (totalDamage / 1000000).toFixed(1) + "M",
-      totalHealing: (totalHealing / 1000000).toFixed(1) + "M",
-      processedRows: data.length,
+      totalMatches:  totalMatches || 0,
+      totalKills:    totalKills.toLocaleString(),
+      totalDamage:   (totalDamage  / 1_000_000).toFixed(1) + "M",
+      totalHealing:  (totalHealing / 1_000_000).toFixed(1) + "M",
       filteredGuild: guildFilter || "All Tracked Guilds"
     });
 
@@ -91,44 +77,44 @@ app.get('/api/stats/summary', async (req, res) => {
     console.error('Stats error:', err);
     res.json({
       totalMatches: 0,
-      totalKills: "—",
-      totalDamage: "—",
+      totalKills:   "—",
+      totalDamage:  "—",
       totalHealing: "—"
     });
   }
 });
 
-// Recent Matches
+// ── RECENT MATCHES ───────────────────────────────────────────────────────────
 app.get('/api/matches/recent', async (req, res) => {
-    if (!supabase) return res.json([]);
-    try {
-        const limit = parseInt(req.query.limit) || 6;
+  if (!supabase) return res.json([]);
+  try {
+    const limit = parseInt(req.query.limit) || 6;
 
-        const { data, error } = await supabase
-            .from('wargame_matches')
-            .select('*')
-            .order('match_date', { ascending: false })
-            .limit(limit);
+    const { data, error } = await supabase
+      .from('wargame_matches')
+      .select('*')
+      .order('match_date', { ascending: false })
+      .limit(limit);
 
-        if (error) throw error;
+    if (error) throw error;
 
-        res.json(data || []);
-    } catch (err) {
-        console.error('Recent matches error:', err);
-        res.json([]);
-    }
+    res.json(data || []);
+  } catch (err) {
+    console.error('Recent matches error:', err);
+    res.json([]);
+  }
 });
 
-// Serve React Frontend
+// ── SERVE REACT FRONTEND ─────────────────────────────────────────────────────
 const frontendPath = path.join(__dirname, '../frontend/dist');
 app.use(express.static(frontendPath));
 
 app.get('*', (req, res) => {
-    res.sendFile(path.join(frontendPath, 'index.html'));
+  res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
-// Start Server
+// ── START SERVER ─────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
