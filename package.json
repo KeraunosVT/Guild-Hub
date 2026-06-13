@@ -1,8 +1,16 @@
 ﻿{
   "name": "tnl-stats",
   "version": "1.0.0",
+  "description": "TNL Stats Application",
+  "type": "module",
+  "main": "server.js",
   "scripts": {
-    "start": "node backend/server.js",
+    "start": "node server.js",
+    "dev": "node server.js",
     "postinstall": "cd frontend && npm install && npm run build"
-  }
+  },
+  "dependencies": {
+    "express": "^4.18.0"
+  },
+  "devDependencies": {}
 }
