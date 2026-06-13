@@ -31,24 +31,36 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#07060a] text-[#e8e2d4]">
-      {/* Hero */}
-      <section className="relative min-h-[85vh] flex items-center justify-center overflow-hidden">
+      {/* Smaller Hero */}
+      <section className="relative min-h-[65vh] flex items-center justify-center overflow-hidden border-b border-[#c9973a]/20">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,#c9973a15_0%,transparent_70%)]" />
         
-        <div className="relative z-10 text-center px-6 max-w-5xl mx-auto">
+        <div className="relative z-10 text-center px-6 max-w-4xl mx-auto">
           <div className="inline-flex items-center gap-3 text-[#c9973a] tracking-[4px] text-sm mb-6">
             ⚔️ THRONE &amp; LIBERTY ⚔️
           </div>
           
-          <h1 className="text-7xl md:text-8xl font-bold tracking-tighter text-[#e8c96b] mb-6">
+          <h1 className="text-6xl md:text-7xl font-bold tracking-tighter text-[#e8c96b] mb-6">
             HOUSE REGARD
           </h1>
-          <p className="text-2xl text-[#9c9384] mb-12">Elite Competitive Guild</p>
+          <p className="text-xl text-[#9c9384] mb-10">Elite Competitive Guild • Organized Warfare</p>
+
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <a href="/dashboard" 
+               className="group px-10 py-4 bg-[#c9973a] hover:bg-[#e8c96b] text-black font-bold text-lg rounded-2xl transition-all flex items-center gap-3 justify-center">
+              <Trophy className="w-5 h-5" />
+              Dashboard
+            </a>
+            <a href="/war-room" 
+               className="px-10 py-4 border-2 border-[#c9973a] hover:bg-white/5 text-[#e8c96b] font-bold text-lg rounded-2xl transition">
+              War Room
+            </a>
+          </div>
         </div>
       </section>
 
       {/* Guild Filter */}
-      <div className="max-w-6xl mx-auto px-6 -mt-8 relative z-20 pb-8">
+      <div className="max-w-6xl mx-auto px-6 -mt-6 relative z-20 pb-8">
         <div className="flex flex-wrap gap-3 justify-center">
           <button
             onClick={() => setSelectedGuild(null)}
@@ -69,7 +81,7 @@ export default function Home() {
       </div>
 
       {/* Stats Cards */}
-      <section className="py-12 bg-[#0a0810]">
+      <section className="py-16 bg-[#0a0810]">
         <div className="max-w-6xl mx-auto px-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             <div className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-2xl p-8 text-center">
