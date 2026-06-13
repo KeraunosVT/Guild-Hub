@@ -10,6 +10,22 @@ console.log("✅ Server starting...");
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Server is alive' });
 });
+
+app.get('/api/debug/count', async (req, res) => {
+  try {
+    const { count, error } = await supabase
+      .from('player_match_stats')
+      .select('*', { count: 'exact', head: true });
+
+    res.json({
+      total_rows: count,
+      error: error ? error.message : null
+    });
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
+
 // ── STATS SUMMARY ────────────────────────────────────────────────────────────
 app.get('/api/stats/summary', async (req, res) => {
   try {
