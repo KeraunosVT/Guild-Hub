@@ -84,13 +84,14 @@ app.get('/api/stats/summary', async (req, res) => {
   }
 });
 
-// ── RECENT MATCHES ───────────────────────────────────────────────────────────
+// ── RECENT MATCHES WITH KILL DIFFERENCE ─────────────────────────────────────
 app.get('/api/matches/recent', async (req, res) => {
   if (!supabase) return res.json([]);
+  
   try {
     const limit = parseInt(req.query.limit) || 6;
 
-    const { data, error } = await supabase
+    const { data: matches, error } = await supabase
       .from('wargame_matches')
       .select('*')
       .order('match_date', { ascending: false })
@@ -98,7 +99,35 @@ app.get('/api/matches/recent', async (req, res) => {
 
     if (error) throw error;
 
-    res.json(data || []);
+    // For each match, calculate kill difference between guilds
+    const enrichedMatches = await Promise.all(matches.map(async (match) => {
+      const { data: playerStats } = await supabase
+        .from('player_match_stats')
+        .select('guild_name, kills')
+        .eq('match_id', match.id);
+
+      const guildStats = {};
+      playerStats.forEach(p => {
+        if (!guildStats[p.guild_name]) guildStats[p.guild_name] = 0;
+        guildStats[p.guild_name] += Number(p.kills) || 0;
+      });
+
+      const guilds = Object.keys(guildStats);
+      const killDiff = guilds.length === 2 
+        ? Math.abs(guildStats[guilds[0]] - guildStats[guilds[1]]) 
+        : 0;
+
+      return {
+        ...match,
+        guildKills: guildStats,
+        killDifference: killDiff,
+        winningGuild: Object.keys(guildStats).reduce((a, b) => 
+          guildStats[a] > guildStats[b] ? a : b
+        )
+      };
+    }));
+
+    res.json(enrichedMatches);
   } catch (err) {
     console.error('Recent matches error:', err);
     res.json([]);
