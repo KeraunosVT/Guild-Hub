@@ -39,24 +39,33 @@ app.get('/api/debug/count', async (req, res) => {
     }
 });
 
-// Stats Summary
+// Stats Summary - Updated to use wargame_matches
 app.get('/api/stats/summary', async (req, res) => {
     if (!supabase) {
         return res.json({ totalMatches: 0, totalKills: "—", totalDamage: "—", totalHealing: "—" });
     }
     try {
-        const { count } = await supabase
-            .from('player_match_stats')
+        // Count from wargame_matches as requested
+        const { count: totalMatches, error: matchError } = await supabase
+            .from('wargame_matches')
             .select('*', { count: 'exact', head: true });
 
+        if (matchError) throw matchError;
+
         res.json({
-            totalMatches: count || 0,
+            totalMatches: totalMatches || 0,
             totalKills: "—",
             totalDamage: "—",
             totalHealing: "—"
         });
     } catch (err) {
-        res.json({ totalMatches: 0, totalKills: "—", totalDamage: "—", totalHealing: "—" });
+        console.error('Stats summary error:', err);
+        res.json({
+            totalMatches: 0,
+            totalKills: "—",
+            totalDamage: "—",
+            totalHealing: "—"
+        });
     }
 });
 
@@ -64,13 +73,19 @@ app.get('/api/stats/summary', async (req, res) => {
 app.get('/api/matches/recent', async (req, res) => {
     if (!supabase) return res.json([]);
     try {
-        const { data } = await supabase
+        const limit = parseInt(req.query.limit) || 6;
+
+        const { data, error } = await supabase
             .from('wargame_matches')
             .select('*')
             .order('match_date', { ascending: false })
-            .limit(6);
+            .limit(limit);
+
+        if (error) throw error;
+
         res.json(data || []);
     } catch (err) {
+        console.error('Recent matches error:', err);
         res.json([]);
     }
 });
