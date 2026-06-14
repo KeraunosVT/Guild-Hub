@@ -1,22 +1,7 @@
 import { Sword, Target, Heart, Users } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-
-// Weapon to Class Mapping
-const weaponToClass = {
-  "CrossbowDaggers": "Scorpion", "CrossbowGreatsword": "Outrider", "CrossbowLongbow": "Scout",
-  "CrossbowOrb": "Crucifix", "CrossbowSnS": "Raider", "CrossbowSpear": "Cavalier",
-  "CrossbowStaff": "Battleweaver", "CrossbowWand": "Fury", "DaggersOrb": "Lunarch",
-  "DaggersWand": "Darkblighter", "GreatswordDaggers": "Ravager", "GreatswordLongbow": "Ranger",
-  "GreatswordOrb": "Justicar", "GreatswordSpear": "Gladiator", "GreatswordWand": "Paladin",
-  "LongbowDaggers": "Infiltrator", "LongbowOrb": "Scryer", "SnSDaggers": "Berserker",
-  "SnSGreatsword": "Crusader", "SnSLongbow": "Warden", "SnSOrb": "Guardian",
-  "SnSSpear": "Steelheart", "SnSStaff": "Disciple", "SnSWand": "Templar",
-  "SpearDaggers": "Shadowdancer", "SpearLongbow": "Impaler", "SpearOrb": "Polaris",
-  "SpearWand": "Voidlance", "StaffDaggers": "Spellblade", "StaffGreatsword": "Sentinel",
-  "StaffLongbow": "Liberator", "StaffOrb": "Enigma", "StaffSpear": "Eradicator",
-  "StaffWand": "Invocator", "WandLongbow": "Seeker", "WandOrb": "Oracle"
-};
+import weaponToClass from '../../../shared/weaponClasses.json';
 
 function getClassName(weapon1, weapon2) {
   if (!weapon1) return "Unknown";
