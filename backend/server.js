@@ -201,6 +201,29 @@ app.get('/api/match/:id', async (req, res) => {
       }
     });
 
+    // Label each color with the guild fielding the most players on it.
+    // Aliases are collapsed so our house counts as one; ties break on kills.
+    const guildTally = { Red: {}, Yellow: {} };
+    players.forEach(p => {
+      const color = (p.team_color || '').toLowerCase();
+      const teamKey = color === 'red' ? 'Red' : color === 'yellow' ? 'Yellow' : null;
+      if (!teamKey) return;
+      const g = canonicalGuild(p.guild_name);
+      if (!guildTally[teamKey][g]) guildTally[teamKey][g] = { count: 0, kills: 0 };
+      guildTally[teamKey][g].count += 1;
+      guildTally[teamKey][g].kills += Number(p.kills || 0);
+    });
+
+    const dominantGuild = (tally) => {
+      const entries = Object.entries(tally);
+      if (entries.length === 0) return null;
+      entries.sort((a, b) => b[1].count - a[1].count || b[1].kills - a[1].kills);
+      return entries[0][0];
+    };
+
+    teamStats.Red.guildName = dominantGuild(guildTally.Red);
+    teamStats.Yellow.guildName = dominantGuild(guildTally.Yellow);
+
     res.json({
       match: match || {},
       players: players || [],

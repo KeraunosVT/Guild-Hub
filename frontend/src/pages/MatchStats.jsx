@@ -210,10 +210,16 @@ export default function MatchStats() {
 
 function TeamStatCard({ color, stats }) {
   const isRed = color === 'Red';
+  const name = stats.guildName || `${color} Team`;
   return (
     <div className={`rounded-sm p-7 border ${isRed ? 'border-oxblood/50 bg-oxblooddeep/20' : 'border-brass/40 bg-panel'}`}>
-      <div className={`font-display text-xl tracking-[0.1em] mb-6 text-center ${isRed ? 'text-oxblood' : 'text-brassbright'}`}>
-        {color} Team
+      <div className="mb-6 text-center">
+        <div className={`eyebrow text-[10px] mb-2 ${isRed ? 'text-oxblood' : 'text-brass'}`}>
+          {color} Team
+        </div>
+        <div className={`font-display text-xl tracking-[0.08em] ${isRed ? 'text-oxblood' : 'text-brassbright'}`}>
+          {name}
+        </div>
       </div>
       <div className="space-y-4 font-mono">
         <Row label="Kills" value={(stats.kills || 0).toLocaleString()} />
