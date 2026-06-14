@@ -166,11 +166,11 @@ export default function MatchStats() {
                         <td className="p-5 font-medium text-[#e8c96b]">{getClassName(p.weapon_1, p.weapon_2)}</td>
                         <td className="p-5 text-[#9c9384]">{p.guild_name}</td>
                         <td className="p-5 font-semibold">{p.player_name}</td>
-                        <td className="p-5 text-center font-bold text-[#e8c96b]">{p.kills}</td>
-                        <td className="p-5 text-center">{p.assists}</td>
-                        <td className="p-5 text-center">{(p.damage_dealt / 1000000).toFixed(1)}M</td>
-                        <td className="p-5 text-center">{(p.damage_taken / 1000000).toFixed(1)}M</td>
-                        <td className="p-5 text-center">{(p.healing / 1000000).toFixed(1)}M</td>
+                        <td className="p-5 text-center font-bold text-[#e8c96b]">{p.kills || 0}</td>
+                        <td className="p-5 text-center">{p.assists || 0}</td>
+                        <td className="p-5 text-center">{((p.damage_dealt || 0) / 1000000).toFixed(1)}M</td>
+                        <td className="p-5 text-center">{((p.damage_taken || 0) / 1000000).toFixed(1)}M</td>
+                        <td className="p-5 text-center">{((p.healing || 0) / 1000000).toFixed(1)}M</td>
                       </tr>
                     ))}
                   </tbody>
@@ -214,7 +214,7 @@ function Top10Card({ title, icon, data, field, unit = "" }) {
           <div key={i} className="flex justify-between">
             <span className="text-[#9c9384]">{p.player_name}</span>
             <span className="font-bold text-[#e8c96b]">
-              {unit ? (p[field] / 1000000).toFixed(1) + unit : p[field]}
+              {unit ? ((p[field] || 0) / 1000000).toFixed(1) + unit : (p[field] || 0)}
             </span>
           </div>
         ))}
