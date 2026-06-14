@@ -1,6 +1,11 @@
 // backend/server.js
-const express = require('express');
 const path = require('path');
+// Load environment variables from backend/.env for local development.
+// On hosts that inject env vars (Render, Railway, etc.) the .env is simply absent
+// and this is a no-op; existing process.env values are never overwritten.
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+
+const express = require('express');
 const cors = require('cors');
 
 const app = express();
@@ -38,19 +43,6 @@ const canonicalGuild = (name) => GUILD_ALIASES[(name || '').trim()] || (name || 
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
-
-// Debug count
-app.get('/api/debug/count', async (req, res) => {
-  if (!supabase) return res.json({ error: "Supabase not initialized" });
-  try {
-    const { count, error } = await supabase
-      .from('player_match_stats')
-      .select('*', { count: 'exact', head: true });
-    res.json({ total_rows: count || 0, error: error?.message });
-  } catch (err) {
-    res.json({ error: err.message });
-  }
-});
 
 // ── STATS SUMMARY ────────────────────────────────────────────────────────────
 app.get('/api/stats/summary', async (req, res) => {
@@ -244,6 +236,12 @@ function getClassNameBackend(weapon1, weapon2) {
 const frontendPath = path.join(__dirname, '../frontend/dist');
 app.use(express.static(frontendPath));
 
+// Unknown API routes return JSON 404 (not the SPA's index.html)
+app.all('/api/*', (req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+// Everything else falls through to the React app
 app.get('*', (req, res) => {
   res.sendFile(path.join(frontendPath, 'index.html'));
 });
