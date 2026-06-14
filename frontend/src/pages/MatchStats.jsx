@@ -2,7 +2,7 @@ import { Trophy, Target, Heart, Sword, Calendar } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-// Weapon to Class Mapping (order doesn't matter)
+// Weapon to Class Mapping (with Daggers)
 const weaponToClass = {
   "CrossbowDaggers": "Scorpion",
   "CrossbowGreatsword": "Outrider",
@@ -44,19 +44,8 @@ const weaponToClass = {
 
 function getClassName(weapon1, weapon2) {
   if (!weapon1) return "Unknown";
-
-  const w1 = weapon1.trim();
-  const w2 = weapon2 ? weapon2.trim() : "";
-
-  // Try both orders
-  let key = (w1 + w2).replace(/\s+/g, '');
-  if (weaponToClass[key]) return weaponToClass[key];
-
-  key = (w2 + w1).replace(/\s+/g, '');
-  if (weaponToClass[key]) return weaponToClass[key];
-
-  // Fallback
-  return `${w1} ${w2}`.trim();
+  const key = (weapon1 + (weapon2 || "")).replace(/\s+/g, '');
+  return weaponToClass[key] || `${weapon1} ${weapon2 || ''}`.trim();
 }
 
 export default function MatchStats() {
@@ -76,7 +65,7 @@ export default function MatchStats() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Load selected match
+  // Load match detail
   useEffect(() => {
     if (!selectedMatchId) return;
     setMatchDetail(null);
@@ -87,6 +76,11 @@ export default function MatchStats() {
 
   const selectedMatch = matchDetail?.match;
   const players = matchDetail?.players || [];
+
+  // Top 10
+  const topKills = [...players].sort((a, b) => (b.kills || 0) - (a.kills || 0)).slice(0, 10);
+  const topDamage = [...players].sort((a, b) => (b.damage_dealt || 0) - (a.damage_dealt || 0)).slice(0, 10);
+  const topHealing = [...players].sort((a, b) => (b.healing || 0) - (a.healing || 0)).slice(0, 10);
 
   return (
     <div className="min-h-screen bg-[#07060a] text-[#e8e2d4]">
@@ -120,10 +114,17 @@ export default function MatchStats() {
               })}
             </p>
 
-            {/* Full Player Rankings */}
-            <div className="mt-12">
+            {/* Top 10 Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-12">
+              <Top10Card title="Top 10 Kills" icon={<Sword className="w-8 h-8" />} data={topKills} field="kills" />
+              <Top10Card title="Top 10 Damage" icon={<Target className="w-8 h-8" />} data={topDamage} field="damage_dealt" unit="M" />
+              <Top10Card title="Top 10 Healing" icon={<Heart className="w-8 h-8" />} data={topHealing} field="healing" unit="M" />
+            </div>
+
+            {/* Full Player Table */}
+            <div className="mt-16">
               <h3 className="text-2xl font-semibold mb-6 flex items-center gap-3">
-                <Sword className="w-6 h-6" /> Player Performance
+                <Sword className="w-6 h-6" /> Full Player Rankings
               </h3>
 
               <div className="bg-[#0f0d13] rounded-2xl overflow-hidden border border-[#c9973a]/20">
@@ -163,6 +164,30 @@ export default function MatchStats() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Top 10 Card
+function Top10Card({ title, icon, data, field, unit = "" }) {
+  return (
+    <div className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-3xl p-8">
+      <div className="flex items-center gap-3 mb-6">
+        {icon}
+        <h3 className="font-semibold text-lg">{title}</h3>
+      </div>
+      <div className="space-y-4">
+        {data.slice(0, 10).map((player, i) => (
+          <div key={i} className="flex justify-between items-center text-sm">
+            <span className="text-[#9c9384]">{player.player_name}</span>
+            <span className="font-bold text-[#e8c96b]">
+              {field === 'damage_dealt' || field === 'healing' 
+                ? (player[field] / 1000000).toFixed(1) + unit 
+                : player[field]}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );
