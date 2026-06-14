@@ -59,18 +59,15 @@ app.get('/api/stats/summary', async (req, res) => {
   }
 
   try {
-    const guildFilter = req.query.guild;
-
     // Total Matches
     const { count: totalMatches } = await supabase
       .from('wargame_matches')
       .select('*', { count: 'exact', head: true });
 
-    // Aggregation via RPC — bypasses the 1,000-row PostgREST limit entirely
+    // Aggregation via RPC — bypasses the 1,000-row PostgREST limit entirely.
+    // Called with no argument; the SQL function already scopes to our guild's names.
     const { data: aggData, error: aggError } = await supabase
-      .rpc('get_stats_summary', {
-        guild_filter: guildFilter || null
-      });
+      .rpc('get_stats_summary');
 
     if (aggError) throw aggError;
 
@@ -82,8 +79,7 @@ app.get('/api/stats/summary', async (req, res) => {
       totalMatches:  totalMatches || 0,
       totalKills:    totalKills.toLocaleString(),
       totalDamage:   (totalDamage  / 1_000_000).toFixed(1) + "M",
-      totalHealing:  (totalHealing / 1_000_000).toFixed(1) + "M",
-      filteredGuild: guildFilter || "All Tracked Guilds"
+      totalHealing:  (totalHealing / 1_000_000).toFixed(1) + "M"
     });
 
   } catch (err) {
