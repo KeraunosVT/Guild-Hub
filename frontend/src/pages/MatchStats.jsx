@@ -4,42 +4,18 @@ import axios from 'axios';
 
 // Weapon to Class Mapping
 const weaponToClass = {
-  "CrossbowDaggers": "Scorpion",
-  "CrossbowGreatsword": "Outrider",
-  "CrossbowLongbow": "Scout",
-  "CrossbowOrb": "Crucifix",
-  "CrossbowSnS": "Raider",
-  "CrossbowSpear": "Cavalier",
-  "CrossbowStaff": "Battleweaver",
-  "CrossbowWand": "Fury",
-  "DaggersOrb": "Lunarch",
-  "DaggersWand": "Darkblighter",
-  "GreatswordDaggers": "Ravager",
-  "GreatswordLongbow": "Ranger",
-  "GreatswordOrb": "Justicar",
-  "GreatswordSpear": "Gladiator",
-  "GreatswordWand": "Paladin",
-  "LongbowDaggers": "Infiltrator",
-  "LongbowOrb": "Scryer",
-  "SnSDaggers": "Berserker",
-  "SnSGreatsword": "Crusader",
-  "SnSLongbow": "Warden",
-  "SnSOrb": "Guardian",
-  "SnSSpear": "Steelheart",
-  "SnSStaff": "Disciple",
-  "SnSWand": "Templar",
-  "SpearDaggers": "Shadowdancer",
-  "SpearLongbow": "Impaler",
-  "SpearOrb": "Polaris",
-  "SpearWand": "Voidlance",
-  "StaffDaggers": "Spellblade",
-  "StaffGreatsword": "Sentinel",
-  "StaffLongbow": "Liberator",
-  "StaffOrb": "Enigma",
-  "StaffSpear": "Eradicator",
-  "StaffWand": "Invocator",
-  "WandLongbow": "Seeker",
-  "WandOrb": "Oracle"
+  "CrossbowDaggers": "Scorpion", "CrossbowGreatsword": "Outrider", "CrossbowLongbow": "Scout",
+  "CrossbowOrb": "Crucifix", "CrossbowSnS": "Raider", "CrossbowSpear": "Cavalier",
+  "CrossbowStaff": "Battleweaver", "CrossbowWand": "Fury", "DaggersOrb": "Lunarch",
+  "DaggersWand": "Darkblighter", "GreatswordDaggers": "Ravager", "GreatswordLongbow": "Ranger",
+  "GreatswordOrb": "Justicar", "GreatswordSpear": "Gladiator", "GreatswordWand": "Paladin",
+  "LongbowDaggers": "Infiltrator", "LongbowOrb": "Scryer", "SnSDaggers": "Berserker",
+  "SnSGreatsword": "Crusader", "SnSLongbow": "Warden", "SnSOrb": "Guardian",
+  "SnSSpear": "Steelheart", "SnSStaff": "Disciple", "SnSWand": "Templar",
+  "SpearDaggers": "Shadowdancer", "SpearLongbow": "Impaler", "SpearOrb": "Polaris",
+  "SpearWand": "Voidlance", "StaffDaggers": "Spellblade", "StaffGreatsword": "Sentinel",
+  "StaffLongbow": "Liberator", "StaffOrb": "Enigma", "StaffSpear": "Eradicator",
+  "StaffWand": "Invocator", "WandLongbow": "Seeker", "WandOrb": "Oracle"
 };
 
 function getClassName(weapon1, weapon2) {
@@ -62,7 +38,6 @@ export default function MatchStats() {
   const [matchDetail, setMatchDetail] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Load recent matches
   useEffect(() => {
     axios.get('/api/matches/recent?limit=30')
       .then(res => {
@@ -73,7 +48,6 @@ export default function MatchStats() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Load selected match details
   useEffect(() => {
     if (!selectedMatchId) return;
     setMatchDetail(null);
@@ -84,8 +58,8 @@ export default function MatchStats() {
 
   const selectedMatch = matchDetail?.match;
   const players = matchDetail?.players || [];
+  const classBreakdown = matchDetail?.classBreakdown || [];
 
-  // Top 10
   const topKills = [...players].sort((a, b) => (b.kills || 0) - (a.kills || 0)).slice(0, 10);
   const topDamage = [...players].sort((a, b) => (b.damage_dealt || 0) - (a.damage_dealt || 0)).slice(0, 10);
   const topHealing = [...players].sort((a, b) => (b.healing || 0) - (a.healing || 0)).slice(0, 10);
@@ -129,12 +103,36 @@ export default function MatchStats() {
               <Top10Card title="Top 10 Healing" icon={<Heart className="w-8 h-8" />} data={topHealing} field="healing" unit="M" />
             </div>
 
-            {/* Full Player Rankings */}
+            {/* Class Breakdown Chart */}
+            <div className="mt-16">
+              <h3 className="text-2xl font-semibold mb-6 flex items-center gap-3">
+                <BarChart3 className="w-6 h-6" /> Class Distribution
+              </h3>
+              <div className="bg-[#0f0d13] rounded-2xl p-8 border border-[#c9973a]/20">
+                <div className="space-y-6">
+                  {classBreakdown.length > 0 ? classBreakdown.map(({ name, count }) => (
+                    <div key={name} className="flex items-center gap-4">
+                      <div className="w-36 text-right font-medium text-[#e8c96b]">{name}</div>
+                      <div className="flex-1 bg-[#1a1724] rounded-full h-5 overflow-hidden">
+                        <div 
+                          className="h-full bg-gradient-to-r from-[#c9973a] to-[#e8c96b] transition-all"
+                          style={{ width: `${Math.max(10, (count / Math.max(...classBreakdown.map(c => c.count))) * 100)}%` }}
+                        />
+                      </div>
+                      <div className="w-12 font-mono text-right text-[#e8c96b]">{count}</div>
+                    </div>
+                  )) : (
+                    <p className="text-center text-[#9c9384] py-8">No class data available</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Full Player Table */}
             <div className="mt-16">
               <h3 className="text-2xl font-semibold mb-6 flex items-center gap-3">
                 <Sword className="w-6 h-6" /> Full Player Rankings
               </h3>
-
               <div className="bg-[#0f0d13] rounded-2xl overflow-hidden border border-[#c9973a]/20">
                 <table className="w-full">
                   <thead>
