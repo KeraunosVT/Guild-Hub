@@ -68,9 +68,7 @@ app.get('/api/stats/summary', async (req, res) => {
 
     // Aggregation via RPC — bypasses the 1,000-row PostgREST limit entirely
     const { data: aggData, error: aggError } = await supabase
-      .rpc('get_stats_summary', {
-        guild_filter: guildFilter || null
-      });
+      .rpc('get_stats_summary');
 
     if (aggError) throw aggError;
 
