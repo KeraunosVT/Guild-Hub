@@ -2,26 +2,61 @@ import { Trophy, Target, Heart, Sword, Calendar } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-// Weapon → Class Mapping
+// Weapon to Class Mapping (order doesn't matter)
 const weaponToClass = {
-  "CrossbowDagger": "Scorpion", "CrossbowGreatsword": "Outrider", "CrossbowLongbow": "Scout",
-  "CrossbowOrb": "Crucifix", "CrossbowSnS": "Raider", "CrossbowSpear": "Cavalier",
-  "CrossbowStaff": "Battleweaver", "CrossbowWand": "Fury", "DaggerOrb": "Lunarch",
-  "DaggerWand": "Darkblighter", "GreatswordDagger": "Ravager", "GreatswordLongbow": "Ranger",
-  "GreatswordOrb": "Justicar", "GreatswordSpear": "Gladiator", "GreatswordWand": "Paladin",
-  "LongbowDagger": "Infiltrator", "LongbowOrb": "Scryer", "SnSDagger": "Berserker",
-  "SnSGreatsword": "Crusader", "SnSLongbow": "Warden", "SnSOrb": "Guardian",
-  "SnSSpear": "Steelheart", "SnSStaff": "Disciple", "SnSWand": "Templar",
-  "SpearDagger": "Shadowdancer", "SpearLongbow": "Impaler", "SpearOrb": "Polaris",
-  "SpearWand": "Voidlance", "StaffDagger": "Spellblade", "StaffGreatsword": "Sentinel",
-  "StaffLongbow": "Liberator", "StaffOrb": "Enigma", "StaffSpear": "Eradicator",
-  "StaffWand": "Invocator", "WandLongbow": "Seeker", "WandOrb": "Oracle"
+  "CrossbowDagger": "Scorpion",
+  "CrossbowGreatsword": "Outrider",
+  "CrossbowLongbow": "Scout",
+  "CrossbowOrb": "Crucifix",
+  "CrossbowSnS": "Raider",
+  "CrossbowSpear": "Cavalier",
+  "CrossbowStaff": "Battleweaver",
+  "CrossbowWand": "Fury",
+  "DaggerOrb": "Lunarch",
+  "DaggerWand": "Darkblighter",
+  "GreatswordDagger": "Ravager",
+  "GreatswordLongbow": "Ranger",
+  "GreatswordOrb": "Justicar",
+  "GreatswordSpear": "Gladiator",
+  "GreatswordWand": "Paladin",
+  "LongbowDagger": "Infiltrator",
+  "LongbowOrb": "Scryer",
+  "SnSDagger": "Berserker",
+  "SnSGreatsword": "Crusader",
+  "SnSLongbow": "Warden",
+  "SnSOrb": "Guardian",
+  "SnSSpear": "Steelheart",
+  "SnSStaff": "Disciple",
+  "SnSWand": "Templar",
+  "SpearDagger": "Shadowdancer",
+  "SpearLongbow": "Impaler",
+  "SpearOrb": "Polaris",
+  "SpearWand": "Voidlance",
+  "StaffDagger": "Spellblade",
+  "StaffGreatsword": "Sentinel",
+  "StaffLongbow": "Liberator",
+  "StaffOrb": "Enigma",
+  "StaffSpear": "Eradicator",
+  "StaffWand": "Invocator",
+  "WandLongbow": "Seeker",
+  "WandOrb": "Oracle"
 };
 
 function getClassName(weapon1, weapon2) {
   if (!weapon1) return "Unknown";
-  const key = (weapon1 + (weapon2 || "")).replace(/\s+/g, '');
-  return weaponToClass[key] || `${weapon1} ${weapon2 || ''}`.trim();
+
+  const w1 = weapon1.trim();
+  const w2 = weapon2 ? weapon2.trim() : "";
+
+  // Try both orders
+  let key = (w1 + w2).replace(/\s+/g, '');
+  if (weaponToClass[key]) return weaponToClass[key];
+
+  key = (w2 + w1).replace(/\s+/g, '');
+  if (weaponToClass[key]) return weaponToClass[key];
+
+  // Fallback
+  return `${w1} ${w2}`.trim();
 }
 
 export default function MatchStats() {
