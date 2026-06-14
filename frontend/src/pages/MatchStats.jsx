@@ -1,4 +1,4 @@
-import { Sword, Trophy, Target, Heart, Users, BarChart3 } from 'lucide-react';
+import { Sword, Target, Heart, Users } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
@@ -95,7 +95,9 @@ export default function MatchStats() {
           <>
             <h2 className="text-3xl font-bold text-[#e8c96b] mb-1">{selectedMatch.title}</h2>
             <p className="text-[#9c9384] mb-12">
-              {new Date(selectedMatch.match_date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+              {new Date(selectedMatch.match_date).toLocaleDateString('en-US', { 
+                weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' 
+              })}
             </p>
 
             {/* 4 Team Stat Cards */}
@@ -114,15 +116,31 @@ export default function MatchStats() {
               <Top10Card title="Top Healing" icon={<Heart />} data={topHealing} field="healing" unit="M" />
             </div>
 
-            {/* Smaller Class Breakdown Pie Chart */}
+            {/* Clean Class Breakdown Card */}
             <div className="mb-16">
               <h3 className="text-2xl font-semibold mb-6 flex items-center gap-3">
                 <Users className="w-6 h-6" /> Class Distribution
               </h3>
-              <ClassPieChart data={classBreakdown} />
+              <div className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-3xl p-8">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {classBreakdown.length > 0 ? classBreakdown.map((item, i) => (
+                    <div key={i} className="flex justify-between items-center bg-[#1a1724] rounded-2xl px-5 py-4">
+                      <span className="font-medium text-[#e8c96b]">{item.name}</span>
+                      <div className="text-right">
+                        <span className="font-mono text-lg">{item.count}</span>
+                        <span className="text-xs text-[#9c9384] ml-2">
+                          ({((item.count / classBreakdown.reduce((a, b) => a + b.count, 0)) * 100).toFixed(1)}%)
+                        </span>
+                      </div>
+                    </div>
+                  )) : (
+                    <p className="col-span-full text-center py-8 text-[#9c9384]">No class data available</p>
+                  )}
+                </div>
+              </div>
             </div>
 
-            {/* Full Player Rankings */}
+            {/* Full Player Rankings - Scrollable */}
             <div>
               <h3 className="text-2xl font-semibold mb-6 flex items-center gap-3">
                 <Sword className="w-6 h-6" /> Full Player Rankings
@@ -151,9 +169,9 @@ export default function MatchStats() {
                         <td className="p-5 font-semibold">{p.player_name}</td>
                         <td className="p-5 text-center font-bold text-[#e8c96b]">{p.kills}</td>
                         <td className="p-5 text-center">{p.assists}</td>
-                        <td className="p-5 text-center">{(p.damage_dealt/1000000).toFixed(1)}M</td>
-                        <td className="p-5 text-center">{(p.damage_taken/1000000).toFixed(1)}M</td>
-                        <td className="p-5 text-center">{(p.healing/1000000).toFixed(1)}M</td>
+                        <td className="p-5 text-center">{(p.damage_dealt / 1000000).toFixed(1)}M</td>
+                        <td className="p-5 text-center">{(p.damage_taken / 1000000).toFixed(1)}M</td>
+                        <td className="p-5 text-center">{(p.healing / 1000000).toFixed(1)}M</td>
                       </tr>
                     ))}
                   </tbody>
@@ -193,69 +211,6 @@ function Top10Card({ title, icon, data, field, unit = "" }) {
             <span className="font-bold text-[#e8c96b]">
               {unit ? (p[field] / 1000000).toFixed(1) + unit : p[field]}
             </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// Smaller Pie Chart
-function ClassPieChart({ data }) {
-  if (!data || data.length === 0) {
-    return <p className="text-center py-12 text-[#9c9384]">No class data available</p>;
-  }
-
-  const total = data.reduce((sum, item) => sum + item.count, 0);
-  let startAngle = 0;
-
-  return (
-    <div className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-3xl p-8 flex flex-col md:flex-row items-center gap-10">
-      {/* Smaller Pie */}
-      <div className="relative w-64 h-64 flex-shrink-0">
-        <svg viewBox="0 0 100 100" className="w-full h-full">
-          {data.map((slice, i) => {
-            const percentage = slice.count / total;
-            const angle = percentage * 360;
-            const endAngle = startAngle + angle;
-            const largeArc = angle > 180 ? 1 : 0;
-
-            const x1 = 50 + 40 * Math.cos((startAngle * Math.PI) / 180);
-            const y1 = 50 + 40 * Math.sin((startAngle * Math.PI) / 180);
-            const x2 = 50 + 40 * Math.cos((endAngle * Math.PI) / 180);
-            const y2 = 50 + 40 * Math.sin((endAngle * Math.PI) / 180);
-
-            const path = `M 50 50 L ${x1} ${y1} A 40 40 0 ${largeArc} 1 ${x2} ${y2} Z`;
-
-            startAngle = endAngle;
-
-            return (
-              <path
-                key={i}
-                d={path}
-                fill={`hsl(${i * 36}, 85%, 58%)`}
-                stroke="#0f0d13"
-                strokeWidth="1"
-              />
-            );
-          })}
-        </svg>
-      </div>
-
-      {/* Legend */}
-      <div className="flex-1 space-y-4 min-w-0">
-        {data.map((item, i) => (
-          <div key={i} className="flex items-center gap-4">
-            <div 
-              className="w-5 h-5 rounded flex-shrink-0" 
-              style={{ backgroundColor: `hsl(${i * 36}, 85%, 58%)` }}
-            />
-            <div className="flex-1 truncate">
-              <div className="font-medium text-[#e8c96b]">{item.name}</div>
-            </div>
-            <div className="font-mono text-right w-20 text-[#e8c96b]">
-              {item.count} ({((item.count / total) * 100).toFixed(1)}%)
-            </div>
           </div>
         ))}
       </div>
