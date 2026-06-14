@@ -2,7 +2,7 @@ import { Trophy, Target, Heart, Sword, Calendar } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-// Weapon to Class Mapping (with Daggers)
+// Weapon to Class Mapping
 const weaponToClass = {
   "CrossbowDaggers": "Scorpion",
   "CrossbowGreatsword": "Outrider",
@@ -48,7 +48,7 @@ function getClassName(weapon1, weapon2) {
   const w1 = weapon1.trim();
   const w2 = weapon2 ? weapon2.trim() : "";
 
-  // Try both possible orders
+  // Try both orders
   let key = (w1 + w2).replace(/\s+/g, '');
   if (weaponToClass[key]) return weaponToClass[key];
 
@@ -65,7 +65,6 @@ export default function MatchStats() {
   const [matchDetail, setMatchDetail] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Load recent matches
   useEffect(() => {
     axios.get('/api/matches/recent?limit=30')
       .then(res => {
@@ -76,7 +75,6 @@ export default function MatchStats() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Load match detail
   useEffect(() => {
     if (!selectedMatchId) return;
     setMatchDetail(null);
@@ -88,7 +86,6 @@ export default function MatchStats() {
   const selectedMatch = matchDetail?.match;
   const players = matchDetail?.players || [];
 
-  // Top 10
   const topKills = [...players].sort((a, b) => (b.kills || 0) - (a.kills || 0)).slice(0, 10);
   const topDamage = [...players].sort((a, b) => (b.damage_dealt || 0) - (a.damage_dealt || 0)).slice(0, 10);
   const topHealing = [...players].sort((a, b) => (b.healing || 0) - (a.healing || 0)).slice(0, 10);
@@ -99,8 +96,8 @@ export default function MatchStats() {
         <h1 className="text-5xl font-bold text-[#e8c96b] mb-2">Match Stats</h1>
         <p className="text-[#9c9384]">Detailed performance per match</p>
 
-        {/* Match Selector */}
-        <div className="mt-8 max-w-md">
+        {/* Match Dropdown */}
+        <div className="mt-8 max-w-lg">
           <label className="block text-sm text-[#9c9384] mb-2">Select Match</label>
           <select
             value={selectedMatchId || ''}
@@ -190,7 +187,7 @@ function Top10Card({ title, icon, data, field, unit = "" }) {
       </div>
       <div className="space-y-4">
         {data.slice(0, 10).map((player, i) => (
-          <div key={i} className="flex justify-between items-center text-sm">
+          <div key={i} className="flex justify-between text-sm">
             <span className="text-[#9c9384]">{player.player_name}</span>
             <span className="font-bold text-[#e8c96b]">
               {field === 'damage_dealt' || field === 'healing' 
