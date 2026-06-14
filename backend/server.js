@@ -156,7 +156,6 @@ app.get('/api/match/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Get match info
     const { data: match, error: matchError } = await supabase
       .from('wargame_matches')
       .select('*')
@@ -165,7 +164,6 @@ app.get('/api/match/:id', async (req, res) => {
 
     if (matchError) throw matchError;
 
-    // Get all player stats
     const { data: players, error: playersError } = await supabase
       .from('player_match_stats')
       .select('*')
@@ -174,11 +172,10 @@ app.get('/api/match/:id', async (req, res) => {
 
     if (playersError) throw playersError;
 
-    // Class Breakdown (simple version - no getClassName needed)
+    // Proper Class Breakdown (handles both weapon slots)
     const classCount = {};
     players.forEach(p => {
-      const weaponKey = (p.weapon_1 + (p.weapon_2 || "")).replace(/\s+/g, '');
-      const className = weaponKey || "Unknown"; // Simple fallback
+      const className = getClassNameBackend(p.weapon_1, p.weapon_2);
       classCount[className] = (classCount[className] || 0) + 1;
     });
 
@@ -191,9 +188,42 @@ app.get('/api/match/:id', async (req, res) => {
     });
   } catch (err) {
     console.error('Match detail error:', err);
-    res.status(500).json({ error: 'Failed to load match details', message: err.message });
+    res.status(500).json({ error: 'Failed to load match details' });
   }
 });
+
+// Backend version of getClassName
+function getClassNameBackend(weapon1, weapon2) {
+  if (!weapon1) return "Unknown";
+
+  const w1 = (weapon1 || "").trim();
+  const w2 = (weapon2 || "").trim();
+
+  const mappings = {
+    "CrossbowDaggers": "Scorpion", "CrossbowGreatsword": "Outrider", "CrossbowLongbow": "Scout",
+    "CrossbowOrb": "Crucifix", "CrossbowSnS": "Raider", "CrossbowSpear": "Cavalier",
+    "CrossbowStaff": "Battleweaver", "CrossbowWand": "Fury",
+    "DaggersOrb": "Lunarch", "DaggersWand": "Darkblighter",
+    "GreatswordDaggers": "Ravager", "GreatswordLongbow": "Ranger",
+    "GreatswordOrb": "Justicar", "GreatswordSpear": "Gladiator", "GreatswordWand": "Paladin",
+    "LongbowDaggers": "Infiltrator", "LongbowOrb": "Scryer",
+    "SnSDaggers": "Berserker", "SnSGreatsword": "Crusader", "SnSLongbow": "Warden",
+    "SnSOrb": "Guardian", "SnSSpear": "Steelheart", "SnSStaff": "Disciple", "SnSWand": "Templar",
+    "SpearDaggers": "Shadowdancer", "SpearLongbow": "Impaler", "SpearOrb": "Polaris",
+    "SpearWand": "Voidlance",
+    "StaffDaggers": "Spellblade", "StaffGreatsword": "Sentinel", "StaffLongbow": "Liberator",
+    "StaffOrb": "Enigma", "StaffSpear": "Eradicator", "StaffWand": "Invocator",
+    "WandLongbow": "Seeker", "WandOrb": "Oracle"
+  };
+
+  let key = (w1 + w2).replace(/\s+/g, '');
+  if (mappings[key]) return mappings[key];
+
+  key = (w2 + w1).replace(/\s+/g, '');
+  if (mappings[key]) return mappings[key];
+
+  return `${w1} ${w2}`.trim() || "Unknown";
+}
 
 // ── SERVE REACT FRONTEND ─────────────────────────────────────────────────────
 const frontendPath = path.join(__dirname, '../frontend/dist');
