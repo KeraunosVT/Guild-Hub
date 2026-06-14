@@ -23,6 +23,19 @@ try {
   console.error("❌ Supabase failed to initialize:", e.message);
 }
 
+// ── GUILD ALIASES ────────────────────────────────────────────────────────────
+// Our guild has changed names over time. Collapse all past names to the current
+// one ("FTP") so stats aren't split across what looks like four separate guilds.
+// Any name NOT in this map is treated as an enemy guild and kept as-is.
+const MY_GUILD = 'FTP';
+const GUILD_ALIASES = {
+  'FTP': MY_GUILD,
+  'PUSH': MY_GUILD,
+  'House Regard': MY_GUILD,
+  'Best Regards': MY_GUILD,
+};
+const canonicalGuild = (name) => GUILD_ALIASES[(name || '').trim()] || (name || '').trim() || 'Unknown';
+
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
@@ -113,23 +126,21 @@ app.get('/api/matches/recent', async (req, res) => {
       const guildStats = {};
 
       players.forEach(p => {
-        const g = p.guild_name || 'Unknown';
+        const g = canonicalGuild(p.guild_name);
         if (!guildStats[g]) guildStats[g] = { kills: 0, damage: 0, healing: 0 };
         guildStats[g].kills += Number(p.kills) || 0;
         guildStats[g].damage += Number(p.damage_dealt) || 0;
         guildStats[g].healing += Number(p.healing) || 0;
       });
 
-      const guilds = Object.keys(guildStats);
-      let killDifference = 0;
-      let winningGuild = null;
+      // Our guild vs. everyone else (handles matches with 2+ enemy guilds)
+      const myKills = guildStats[MY_GUILD]?.kills || 0;
+      const enemyKills = Object.entries(guildStats)
+        .filter(([g]) => g !== MY_GUILD)
+        .reduce((sum, [, s]) => sum + s.kills, 0);
 
-      if (guilds.length >= 2) {
-        const g1 = guilds[0];
-        const g2 = guilds[1];
-        killDifference = Math.abs(guildStats[g1].kills - guildStats[g2].kills);
-        winningGuild = guildStats[g1].kills > guildStats[g2].kills ? g1 : g2;
-      }
+      const killDifference = Math.abs(myKills - enemyKills);
+      const winningGuild = myKills >= enemyKills ? MY_GUILD : 'Enemy';
 
       return {
         ...match,

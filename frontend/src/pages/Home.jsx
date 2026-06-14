@@ -5,20 +5,13 @@ import axios from 'axios';
 export default function Home() {
   const [stats, setStats] = useState({});
   const [recentMatches, setRecentMatches] = useState([]);
-  const [selectedGuild, setSelectedGuild] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const guilds = ['FTP', 'PUSH', 'House Regard', 'Best Regards'];
-
-  const fetchData = async (guild = null) => {
+  const fetchData = async () => {
     setLoading(true);
     try {
-      const statsUrl = guild 
-        ? `/api/stats/summary?guild=${encodeURIComponent(guild)}` 
-        : '/api/stats/summary';
-      
       const [statsRes, matchesRes] = await Promise.all([
-        axios.get(statsUrl),
+        axios.get('/api/stats/summary'),
         axios.get('/api/matches/recent?limit=6')
       ]);
 
@@ -32,8 +25,8 @@ export default function Home() {
   };
 
   useEffect(() => {
-    fetchData(selectedGuild);
-  }, [selectedGuild]);
+    fetchData();
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#07060a] text-[#e8e2d4]">
@@ -64,27 +57,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-
-      {/* Guild Filter */}
-      <div className="max-w-6xl mx-auto px-6 -mt-6 relative z-20 pb-8">
-        <div className="flex flex-wrap gap-3 justify-center">
-          <button
-            onClick={() => setSelectedGuild(null)}
-            className={`px-6 py-2.5 rounded-full text-sm font-medium transition-all ${!selectedGuild ? 'bg-[#c9973a] text-black' : 'bg-[#1a1724] hover:bg-[#2a2638] text-[#e8e2d4]'}`}
-          >
-            All Guilds
-          </button>
-          {guilds.map(guild => (
-            <button
-              key={guild}
-              onClick={() => setSelectedGuild(guild)}
-              className={`px-6 py-2.5 rounded-full text-sm font-medium transition-all ${selectedGuild === guild ? 'bg-[#c9973a] text-black' : 'bg-[#1a1724] hover:bg-[#2a2638] text-[#e8e2d4]'}`}
-            >
-              {guild}
-            </button>
-          ))}
-        </div>
-      </div>
 
       {/* Stats Cards */}
       <section className="py-12 bg-[#0a0810]">
