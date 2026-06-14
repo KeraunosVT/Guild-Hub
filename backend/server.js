@@ -147,42 +147,43 @@ app.get('/api/matches/recent', async (req, res) => {
     res.json([]);
   }
 });
-// ── MATCH DETAIL WITH CLASS BREAKDOWN ───────────────────────────────────────
+// ── MATCH DETAIL ENDPOINT ───────────────────────────────────────────────────
 app.get('/api/match/:id', async (req, res) => {
-  if (!supabase) return res.status(500).json({ error: "Supabase not initialized" });
+  if (!supabase) {
+    return res.status(500).json({ error: "Supabase not initialized" });
+  }
 
   try {
     const { id } = req.params;
 
-    const { data: match } = await supabase
+    // Get match info
+    const { data: match, error: matchError } = await supabase
       .from('wargame_matches')
       .select('*')
       .eq('id', id)
       .single();
 
-    const { data: players } = await supabase
+    if (matchError) throw matchError;
+
+    // Get all player stats for this match
+    const { data: players, error: playersError } = await supabase
       .from('player_match_stats')
       .select('*')
       .eq('match_id', id)
       .order('rank', { ascending: true });
 
-    // Class Breakdown
-    const classCount = {};
-    players.forEach(p => {
-      const className = getClassName(p.weapon_1, p.weapon_2); // We'll move this helper to frontend
-      classCount[className] = (classCount[className] || 0) + 1;
-    });
+    if (playersError) throw playersError;
 
     res.json({
-      match,
-      players: players || [],
-      classBreakdown: Object.entries(classCount)
-        .map(([name, count]) => ({ name, count }))
-        .sort((a, b) => b.count - a.count)
+      match: match || {},
+      players: players || []
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to load match' });
+    console.error('Match detail error:', err);
+    res.status(500).json({ 
+      error: 'Failed to load match details',
+      message: err.message 
+    });
   }
 });
 
