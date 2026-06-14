@@ -6,9 +6,11 @@ export default function Home() {
   const [stats, setStats] = useState({});
   const [recentMatches, setRecentMatches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
+    setError(false);
     try {
       const [statsRes, matchesRes] = await Promise.all([
         axios.get('/api/stats/summary'),
@@ -19,6 +21,7 @@ export default function Home() {
       setRecentMatches(matchesRes.data);
     } catch (err) {
       console.error(err);
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -58,6 +61,29 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Loading state */}
+      {loading && (
+        <div className="py-24 text-center text-[#9c9384]">Loading stats…</div>
+      )}
+
+      {/* Error state */}
+      {error && !loading && (
+        <div className="max-w-2xl mx-auto px-6 py-16">
+          <div className="bg-[#0f0d13] border border-red-500/40 rounded-2xl p-8 text-center">
+            <div className="text-red-400 font-semibold text-lg mb-2">Couldn't load stats</div>
+            <p className="text-[#9c9384] mb-6">The server may be having trouble. Please try again.</p>
+            <button
+              onClick={fetchData}
+              className="px-6 py-2.5 bg-[#c9973a] hover:bg-[#e8c96b] text-black font-bold rounded-full transition"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!loading && !error && (
+        <>
       {/* Stats Cards */}
       <section className="py-12 bg-[#0a0810]">
         <div className="max-w-6xl mx-auto px-6">
@@ -152,6 +178,8 @@ export default function Home() {
     </div>
   </div>
 </section>
+        </>
+      )}
     </div>
   );
 }

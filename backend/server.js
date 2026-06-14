@@ -55,7 +55,7 @@ app.get('/api/debug/count', async (req, res) => {
 // ── STATS SUMMARY ────────────────────────────────────────────────────────────
 app.get('/api/stats/summary', async (req, res) => {
   if (!supabase) {
-    return res.json({ totalMatches: 0, totalKills: "—", totalDamage: "—", totalHealing: "—" });
+    return res.status(503).json({ error: "Database not configured" });
   }
 
   try {
@@ -84,18 +84,13 @@ app.get('/api/stats/summary', async (req, res) => {
 
   } catch (err) {
     console.error('Stats error:', err);
-    res.json({
-      totalMatches: 0,
-      totalKills:   "—",
-      totalDamage:  "—",
-      totalHealing: "—"
-    });
+    res.status(500).json({ error: "Failed to load stats summary" });
   }
 });
 
 // ── REAL RECENT MATCHES WITH STATS ──────────────────────────────────────────
 app.get('/api/matches/recent', async (req, res) => {
-  if (!supabase) return res.json([]);
+  if (!supabase) return res.status(503).json({ error: "Database not configured" });
 
   try {
     // Clamp the limit so a caller can't request, say, ?limit=100000
@@ -159,13 +154,13 @@ app.get('/api/matches/recent', async (req, res) => {
     res.json(enriched);
   } catch (err) {
     console.error('Recent matches error:', err);
-    res.json([]);
+    res.status(500).json({ error: "Failed to load recent matches" });
   }
 });
 // ── MATCH DETAIL WITH RED vs YELLOW TEAMS ───────────────────────────────────
 app.get('/api/match/:id', async (req, res) => {
   if (!supabase) {
-    return res.status(500).json({ error: "Supabase not initialized" });
+    return res.status(503).json({ error: "Database not configured" });
   }
 
   try {

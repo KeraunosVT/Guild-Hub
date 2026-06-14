@@ -22,23 +22,42 @@ export default function MatchStats() {
   const [selectedMatchId, setSelectedMatchId] = useState(null);
   const [matchDetail, setMatchDetail] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState(false);
+  const [detailError, setDetailError] = useState(false);
 
-  useEffect(() => {
+  const loadMatches = () => {
+    setLoading(true);
+    setListError(false);
     axios.get('/api/matches/recent?limit=30')
       .then(res => {
         setMatches(res.data);
         if (res.data.length > 0) setSelectedMatchId(res.data[0].id);
       })
-      .catch(err => console.error(err))
+      .catch(err => {
+        console.error(err);
+        setListError(true);
+      })
       .finally(() => setLoading(false));
-  }, []);
+  };
 
   useEffect(() => {
-    if (!selectedMatchId) return;
+    loadMatches();
+  }, []);
+
+  const loadDetail = (matchId) => {
+    if (!matchId) return;
     setMatchDetail(null);
-    axios.get(`/api/match/${selectedMatchId}`)
+    setDetailError(false);
+    axios.get(`/api/match/${matchId}`)
       .then(res => setMatchDetail(res.data))
-      .catch(err => console.error(err));
+      .catch(err => {
+        console.error(err);
+        setDetailError(true);
+      });
+  };
+
+  useEffect(() => {
+    loadDetail(selectedMatchId);
   }, [selectedMatchId]);
 
   const selectedMatch = matchDetail?.match;
@@ -77,7 +96,40 @@ export default function MatchStats() {
           </div>
         </div>
 
-        {selectedMatch && (
+        {/* List load failure — dropdown can't populate */}
+        {listError && (
+          <div className="bg-[#0f0d13] border border-red-500/40 rounded-2xl p-8 text-center">
+            <div className="text-red-400 font-semibold text-lg mb-2">Couldn't load matches</div>
+            <p className="text-[#9c9384] mb-6">The server may be having trouble. Please try again.</p>
+            <button
+              onClick={loadMatches}
+              className="px-6 py-2.5 bg-[#c9973a] hover:bg-[#e8c96b] text-black font-bold rounded-full transition"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Detail load failure for the selected match */}
+        {detailError && !listError && (
+          <div className="bg-[#0f0d13] border border-red-500/40 rounded-2xl p-8 text-center">
+            <div className="text-red-400 font-semibold text-lg mb-2">Couldn't load this match</div>
+            <p className="text-[#9c9384] mb-6">Something went wrong fetching the match details.</p>
+            <button
+              onClick={() => loadDetail(selectedMatchId)}
+              className="px-6 py-2.5 bg-[#c9973a] hover:bg-[#e8c96b] text-black font-bold rounded-full transition"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Loading the selected match (no error, not yet arrived) */}
+        {selectedMatchId && !matchDetail && !detailError && !listError && (
+          <div className="py-20 text-center text-[#9c9384]">Loading match…</div>
+        )}
+
+        {selectedMatch && !detailError && (
           <>
             <h2 className="text-3xl font-bold text-[#e8c96b] mb-1">{selectedMatch.title}</h2>
             <p className="text-[#9c9384] mb-12">
