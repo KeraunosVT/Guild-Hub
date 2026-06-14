@@ -31,6 +31,11 @@ export default function MatchStats() {
   const selectedMatch = matchDetail?.match;
   const players = matchDetail?.players || [];
 
+  // Top 10 Calculations
+  const topKills = [...players].sort((a, b) => (b.kills || 0) - (a.kills || 0)).slice(0, 10);
+  const topDamage = [...players].sort((a, b) => (b.damage_dealt || 0) - (a.damage_dealt || 0)).slice(0, 10);
+  const topHealing = [...players].sort((a, b) => (b.healing || 0) - (a.healing || 0)).slice(0, 10);
+
   return (
     <div className="min-h-screen bg-[#07060a] text-[#e8e2d4]">
       <div className="max-w-7xl mx-auto px-6 py-12">
@@ -63,12 +68,18 @@ export default function MatchStats() {
               })}
             </p>
 
-            {/* Full Player Stats Table */}
-            <div className="mt-12">
-              <h3 className="text-2xl font-semibold mb-6 flex items-center gap-3">
-                <Sword className="w-6 h-6" /> Player Performance
-              </h3>
+            {/* Top 10 Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-12">
+              <Top10Card title="Top 10 Kills" icon={<Sword className="w-8 h-8" />} data={topKills} field="kills" />
+              <Top10Card title="Top 10 Damage" icon={<Target className="w-8 h-8" />} data={topDamage} field="damage_dealt" unit="M" />
+              <Top10Card title="Top 10 Healing" icon={<Heart className="w-8 h-8" />} data={topHealing} field="healing" unit="M" />
+            </div>
 
+            {/* Full Ranked List */}
+            <div className="mt-16">
+              <h3 className="text-2xl font-semibold mb-6 flex items-center gap-3">
+                <Trophy className="w-6 h-6" /> Full Player Rankings
+              </h3>
               <div className="bg-[#0f0d13] rounded-2xl overflow-hidden border border-[#c9973a]/20">
                 <table className="w-full">
                   <thead>
@@ -106,6 +117,30 @@ export default function MatchStats() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Top 10 Card Component
+function Top10Card({ title, icon, data, field, unit = "" }) {
+  return (
+    <div className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-3xl p-8">
+      <div className="flex items-center gap-3 mb-6">
+        {icon}
+        <h3 className="font-semibold text-lg">{title}</h3>
+      </div>
+      <div className="space-y-4">
+        {data.slice(0, 10).map((player, i) => (
+          <div key={i} className="flex justify-between items-center text-sm">
+            <span className="text-[#9c9384]">{player.player_name}</span>
+            <span className="font-bold text-[#e8c96b]">
+              {field === 'damage_dealt' || field === 'healing' 
+                ? (player[field] / 1000000).toFixed(1) + unit 
+                : player[field]}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );
