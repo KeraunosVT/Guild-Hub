@@ -2,7 +2,7 @@ import { Sword, Target, Heart, Users } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-// Weapon → Class Mapping
+// Weapon to Class Mapping
 const weaponToClass = {
   "CrossbowDaggers": "Scorpion", "CrossbowGreatsword": "Outrider", "CrossbowLongbow": "Scout",
   "CrossbowOrb": "Crucifix", "CrossbowSnS": "Raider", "CrossbowSpear": "Cavalier",
@@ -38,7 +38,6 @@ export default function MatchStats() {
   const [matchDetail, setMatchDetail] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Load matches
   useEffect(() => {
     axios.get('/api/matches/recent?limit=30')
       .then(res => {
@@ -49,7 +48,6 @@ export default function MatchStats() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Load selected match
   useEffect(() => {
     if (!selectedMatchId) return;
     setMatchDetail(null);
@@ -62,11 +60,6 @@ export default function MatchStats() {
   const players = matchDetail?.players || [];
   const classBreakdown = matchDetail?.classBreakdown || [];
   const teamStats = matchDetail?.teamStats || {};
-
-  const teams = Object.entries(teamStats).map(([guild, stats]) => ({
-    guild,
-    ...stats
-  }));
 
   const topKills = [...players].sort((a, b) => (b.kills || 0) - (a.kills || 0)).slice(0, 10);
   const topDamage = [...players].sort((a, b) => (b.damage_dealt || 0) - (a.damage_dealt || 0)).slice(0, 10);
@@ -108,20 +101,10 @@ export default function MatchStats() {
               })}
             </p>
 
-            {/* Real Team Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
-              {teams.length > 0 ? teams.map((team, i) => (
-                <TeamStatCard
-                  key={i}
-                  guild={team.guild}
-                  kills={team.kills}
-                  damageDealt={team.damage_dealt}
-                  damageTaken={team.damage_taken}
-                  healing={team.healing}
-                />
-              )) : (
-                <div className="col-span-full text-center py-8 text-[#9c9384]">Loading team stats...</div>
-              )}
+            {/* Red vs Yellow Team Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-16">
+              <TeamStatCard color="Red" stats={teamStats.Red || {}} />
+              <TeamStatCard color="Yellow" stats={teamStats.Yellow || {}} />
             </div>
 
             {/* Top 10 Cards */}
@@ -203,27 +186,17 @@ export default function MatchStats() {
 
 /* ====================== SUB COMPONENTS ====================== */
 
-function TeamStatCard({ guild, kills, damageDealt, damageTaken, healing }) {
+function TeamStatCard({ color, stats }) {
   return (
     <div className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-3xl p-8">
-      <div className="text-xl font-bold text-[#e8c96b] mb-6 text-center">{guild}</div>
+      <div className={`text-2xl font-bold mb-6 text-center ${color === 'Red' ? 'text-red-500' : 'text-yellow-400'}`}>
+        {color} Team
+      </div>
       <div className="space-y-6">
-        <div className="flex justify-between">
-          <span className="text-[#9c9384]">Kills</span>
-          <span className="font-bold text-[#e8c96b]">{kills.toLocaleString()}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-[#9c9384]">Damage Dealt</span>
-          <span className="font-bold text-[#e8c96b]">{(damageDealt / 1000000).toFixed(1)}M</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-[#9c9384]">Damage Taken</span>
-          <span className="font-bold text-[#e8c96b]">{(damageTaken / 1000000).toFixed(1)}M</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-[#9c9384]">Healing</span>
-          <span className="font-bold text-[#e8c96b]">{(healing / 1000000).toFixed(1)}M</span>
-        </div>
+        <div className="flex justify-between"><span className="text-[#9c9384]">Kills</span><span className="font-bold text-[#e8c96b]">{(stats.kills || 0).toLocaleString()}</span></div>
+        <div className="flex justify-between"><span className="text-[#9c9384]">Damage Dealt</span><span className="font-bold text-[#e8c96b]">{((stats.damage_dealt || 0) / 1000000).toFixed(1)}M</span></div>
+        <div className="flex justify-between"><span className="text-[#9c9384]">Damage Taken</span><span className="font-bold text-[#e8c96b]">{((stats.damage_taken || 0) / 1000000).toFixed(1)}M</span></div>
+        <div className="flex justify-between"><span className="text-[#9c9384]">Healing</span><span className="font-bold text-[#e8c96b]">{((stats.healing || 0) / 1000000).toFixed(1)}M</span></div>
       </div>
     </div>
   );
