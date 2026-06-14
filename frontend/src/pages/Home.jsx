@@ -1,6 +1,8 @@
-import { Trophy, Target, Heart, Sword, Calendar } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import axios from 'axios';
+import Sigil from '../components/Sigil';
+import { GUILD } from '../guild';
 
 export default function Home() {
   const [stats, setStats] = useState({});
@@ -14,9 +16,8 @@ export default function Home() {
     try {
       const [statsRes, matchesRes] = await Promise.all([
         axios.get('/api/stats/summary'),
-        axios.get('/api/matches/recent?limit=6')
+        axios.get('/api/matches/recent?limit=6'),
       ]);
-
       setStats(statsRes.data);
       setRecentMatches(matchesRes.data);
     } catch (err) {
@@ -27,159 +28,169 @@ export default function Home() {
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
+
+  const ledger = [
+    { label: 'Engagements', value: stats.totalMatches ?? '—' },
+    { label: 'Kills',       value: stats.totalKills ?? '—' },
+    { label: 'Damage',      value: stats.totalDamage ?? '—' },
+    { label: 'Healing',     value: stats.totalHealing ?? '—' },
+  ];
 
   return (
-    <div className="min-h-screen bg-[#07060a] text-[#e8e2d4]">
-      {/* Hero */}
-      <section className="relative min-h-[65vh] flex items-center justify-center overflow-hidden border-b border-[#c9973a]/20">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,#c9973a15_0%,transparent_70%)]" />
-        
-        <div className="relative z-10 text-center px-6 max-w-4xl mx-auto">
-          <div className="inline-flex items-center gap-3 text-[#c9973a] tracking-[4px] text-sm mb-6">
-            ⚔️ THRONE &amp; LIBERTY ⚔️
-          </div>
-          
-          <h1 className="text-6xl md:text-7xl font-bold tracking-tighter text-[#e8c96b] mb-6">
-            HOUSE REGARD
-          </h1>
-          <p className="text-xl text-[#9c9384] mb-10">Elite Competitive Guild • Organized Warfare</p>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="/dashboard" 
-               className="group px-10 py-4 bg-[#c9973a] hover:bg-[#e8c96b] text-black font-bold text-lg rounded-2xl transition-all flex items-center gap-3 justify-center">
-              <Trophy className="w-5 h-5" />
-              Dashboard
-            </a>
-            <a href="/war-room" 
-               className="px-10 py-4 border-2 border-[#c9973a] hover:bg-white/5 text-[#e8c96b] font-bold text-lg rounded-2xl transition">
-              War Room
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* Loading state */}
-      {loading && (
-        <div className="py-24 text-center text-[#9c9384]">Loading stats…</div>
-      )}
-
-      {/* Error state */}
-      {error && !loading && (
-        <div className="max-w-2xl mx-auto px-6 py-16">
-          <div className="bg-[#0f0d13] border border-red-500/40 rounded-2xl p-8 text-center">
-            <div className="text-red-400 font-semibold text-lg mb-2">Couldn't load stats</div>
-            <p className="text-[#9c9384] mb-6">The server may be having trouble. Please try again.</p>
-            <button
-              onClick={fetchData}
-              className="px-6 py-2.5 bg-[#c9973a] hover:bg-[#e8c96b] text-black font-bold rounded-full transition"
+    <div>
+      {/* ── BANNER HERO ─────────────────────────────────────────── */}
+      <section className="hall-grain border-b border-line">
+        <div className="max-w-6xl mx-auto px-6 pt-20 pb-16 flex flex-col items-center text-center">
+          {/* Heraldic banner */}
+          <div className="rise relative mb-8">
+            <div
+              className="w-28 h-40 bg-gradient-to-b from-oxblood to-oxblooddeep border-x border-t border-brass/40 flex items-start justify-center pt-7"
+              style={{ clipPath: 'polygon(0 0, 100% 0, 100% 86%, 50% 100%, 0 86%)' }}
             >
-              Retry
-            </button>
-          </div>
-        </div>
-      )}
-
-      {!loading && !error && (
-        <>
-      {/* Stats Cards */}
-      <section className="py-12 bg-[#0a0810]">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-2xl p-8 text-center">
-              <Trophy className="w-10 h-10 mx-auto mb-4 text-[#c9973a]" />
-              <div className="text-5xl font-bold text-[#e8c96b]">{stats.totalMatches || 0}</div>
-              <div className="text-sm tracking-widest text-[#9c9384] mt-2">MATCHES</div>
-            </div>
-
-            <div className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-2xl p-8 text-center">
-              <Sword className="w-10 h-10 mx-auto mb-4 text-[#c9973a]" />
-              <div className="text-5xl font-bold text-[#e8c96b]">{stats.totalKills || 0}</div>
-              <div className="text-sm tracking-widest text-[#9c9384] mt-2">TOTAL KILLS</div>
-            </div>
-
-            <div className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-2xl p-8 text-center">
-              <Target className="w-10 h-10 mx-auto mb-4 text-[#c9973a]" />
-              <div className="text-5xl font-bold text-[#e8c96b]">{stats.totalDamage || "0.0M"}</div>
-              <div className="text-sm tracking-widest text-[#9c9384] mt-2">TOTAL DAMAGE</div>
-            </div>
-
-            <div className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-2xl p-8 text-center">
-              <Heart className="w-10 h-10 mx-auto mb-4 text-[#c9973a]" />
-              <div className="text-5xl font-bold text-[#e8c96b]">{stats.totalHealing || "0.0M"}</div>
-              <div className="text-sm tracking-widest text-[#9c9384] mt-2">TOTAL HEALING</div>
+              <Sigil className="w-14 h-[4.5rem] text-brassbright" />
             </div>
           </div>
+
+          <div className="rise rise-1 eyebrow text-brass text-[11px] mb-5">
+            Throne &amp; Liberty
+          </div>
+          <h1 className="rise rise-1 font-display font-bold text-bone text-5xl md:text-7xl tracking-[0.08em] leading-tight">
+            {GUILD.house}
+          </h1>
+          <p className="rise rise-2 font-display text-brassbright text-lg md:text-xl tracking-[0.12em] mt-6">
+            {GUILD.motto}
+          </p>
+          <p className="rise rise-2 max-w-xl text-ash mt-5 leading-relaxed">
+            {GUILD.creed}
+          </p>
+
+          <Link
+            to="/war-record"
+            className="rise rise-3 mt-10 inline-flex items-center gap-2 px-8 py-3.5 bg-brass hover:bg-brassbright text-ink font-semibold tracking-wide rounded-sm transition-colors"
+          >
+            Enter the War Record
+            <span aria-hidden>→</span>
+          </Link>
         </div>
       </section>
 
-      {/* Recent Matches */}
-<section className="py-20 px-6 bg-[#07060a]">
-  <div className="max-w-6xl mx-auto">
-    <h2 className="text-3xl font-bold text-[#e8c96b] mb-12 text-center flex items-center gap-3 justify-center">
-      <Calendar className="w-8 h-8" /> Recent Matches
-    </h2>
-
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {recentMatches.length > 0 ? recentMatches.map((match, index) => (
-        <div key={match.id || index} 
-             className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-2xl p-6 hover:border-[#e8c96b] transition-all">
-          
-          <div className="text-[#c9973a] text-sm mb-3">
-            {match.match_date ? new Date(match.match_date).toLocaleDateString('en-US', { 
-              month: 'short', day: 'numeric', year: 'numeric' 
-            }) : 'Recent'}
-          </div>
-          
-          <div className="font-semibold text-lg mb-6 line-clamp-2">{match.title || 'Wargame Match'}</div>
-
-          {/* Main Stats */}
-          <div className="grid grid-cols-3 gap-4 text-center mb-6">
-            <div>
-              <div className="text-[#e8c96b] font-bold text-xl">{match.kills?.toLocaleString() || '—'}</div>
-              <div className="text-xs text-[#9c9384]">Kills</div>
-            </div>
-            <div>
-              <div className="text-[#e8c96b] font-bold text-xl">
-                {match.damage ? (match.damage / 1000000).toFixed(1) + "M" : '—'}
-              </div>
-              <div className="text-xs text-[#9c9384]">Damage</div>
-            </div>
-            <div>
-              <div className="text-[#e8c96b] font-bold text-xl">
-                {match.healing ? (match.healing / 1000000).toFixed(1) + "M" : '—'}
-              </div>
-              <div className="text-xs text-[#9c9384]">Healing</div>
-            </div>
+      {/* ── STANDING OF THE HOUSE (engraved ledger) ─────────────── */}
+      <section className="border-b border-line bg-hall">
+        <div className="max-w-6xl mx-auto px-6 py-10">
+          <div className="eyebrow text-ash text-[11px] text-center mb-7">
+            Standing of the House
           </div>
 
-          {/* Kill Difference */}
-          {match.killDifference !== undefined && match.killDifference > 0 && (
-            <div className="pt-4 border-t border-[#c9973a]/10 text-center">
-              <div className="text-[#c9973a] text-xs mb-1">KILL DIFFERENCE</div>
-              <div className="text-2xl font-bold text-[#e8c96b]">
-                +{match.killDifference}
-              </div>
-              {match.winningGuild && (
-                <div className="text-xs text-[#9c9384] mt-1">
-                  {match.winningGuild} leads
+          {error ? (
+            <HallError onRetry={fetchData} message="The standing could not be read from the records." />
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4">
+              {ledger.map((item, i) => (
+                <div
+                  key={item.label}
+                  className={`px-6 py-5 text-center ${
+                    i !== 0 ? 'border-l border-line' : ''
+                  } ${i === 2 ? 'border-l-0 md:border-l border-line' : ''}`}
+                >
+                  <div className="font-mono text-3xl md:text-4xl text-brassbright tabular-nums">
+                    {loading ? '·' : item.value}
+                  </div>
+                  <div className="eyebrow text-[10px] text-ash mt-3">{item.label}</div>
                 </div>
-              )}
+              ))}
             </div>
           )}
         </div>
-      )) : (
-        <div className="col-span-3 text-center py-12 text-[#9c9384]">
-          No matches recorded yet.
+      </section>
+
+      {/* ── WAR RECORD (recent engagements) ─────────────────────── */}
+      <section className="max-w-6xl mx-auto px-6 py-16">
+        <div className="flex items-baseline justify-between mb-2">
+          <h2 className="font-display text-2xl text-bone tracking-[0.1em]">War Record</h2>
+          <Link to="/war-record" className="text-sm text-brass hover:text-brassbright transition-colors">
+            Full record →
+          </Link>
         </div>
-      )}
+        <div className="rule-fade mb-8" />
+
+        {error && !loading ? (
+          <HallError onRetry={fetchData} message="The war record could not be summoned." />
+        ) : loading ? (
+          <div className="py-16 text-center text-ash">Reading the record…</div>
+        ) : recentMatches.length === 0 ? (
+          <div className="py-16 text-center text-ash">
+            No engagements logged yet. The field awaits.
+          </div>
+        ) : (
+          <div className="border border-line rounded-sm divide-y divide-line overflow-hidden">
+            {recentMatches.map((m) => (
+              <EngagementRow key={m.id} match={m} />
+            ))}
+          </div>
+        )}
+      </section>
     </div>
-  </div>
-</section>
-        </>
-      )}
+  );
+}
+
+function EngagementRow({ match }) {
+  const held = match.winningGuild === GUILD.tag || match.winningGuild === 'FTP';
+  const decided = match.killDifference > 0;
+
+  const date = match.match_date
+    ? new Date(match.match_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : '—';
+  const year = match.match_date ? new Date(match.match_date).getFullYear() : '';
+
+  return (
+    <Link
+      to="/war-record"
+      className="group flex items-center gap-5 px-5 py-4 bg-panel hover:bg-panelup transition-colors"
+    >
+      <div className="w-14 shrink-0 text-center">
+        <div className="font-mono text-bone leading-none">{date}</div>
+        <div className="font-mono text-[10px] text-ash mt-1">{year}</div>
+      </div>
+
+      <div className="w-px self-stretch bg-line" />
+
+      <div className="min-w-0 flex-1">
+        <div className="font-medium text-bone truncate group-hover:text-brassbright transition-colors">
+          {match.title || 'Wargame engagement'}
+        </div>
+        <div className="font-mono text-xs text-ash mt-1">
+          {(match.kills ?? 0).toLocaleString()} kills · {match.damage ? (match.damage / 1e6).toFixed(1) + 'M dmg' : '—'}
+        </div>
+      </div>
+
+      <div className="shrink-0 text-right">
+        {decided ? (
+          <>
+            <div className={`eyebrow text-[10px] ${held ? 'text-brassbright' : 'text-oxblood'}`}>
+              {held ? 'Held the field' : 'Lost the field'}
+            </div>
+            <div className="font-mono text-sm text-ash mt-1">+{match.killDifference}</div>
+          </>
+        ) : (
+          <div className="eyebrow text-[10px] text-ash">Contested</div>
+        )}
+      </div>
+    </Link>
+  );
+}
+
+function HallError({ onRetry, message }) {
+  return (
+    <div className="panel rounded-sm p-8 text-center">
+      <div className="font-display text-oxblood tracking-wide text-lg mb-2">The record is sealed</div>
+      <p className="text-ash mb-6">{message} The hall may be offline — try again.</p>
+      <button
+        onClick={onRetry}
+        className="px-6 py-2.5 bg-brass hover:bg-brassbright text-ink font-semibold rounded-sm transition-colors"
+      >
+        Try again
+      </button>
     </div>
   );
 }

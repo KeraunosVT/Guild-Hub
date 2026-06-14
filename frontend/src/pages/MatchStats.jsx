@@ -1,19 +1,16 @@
-import { Sword, Target, Heart, Users } from 'lucide-react';
+import { Sword, Target, Heart, Users, ShieldAlert } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import weaponToClass from '../../../shared/weaponClasses.json';
 
 function getClassName(weapon1, weapon2) {
-  if (!weapon1) return "Unknown";
+  if (!weapon1) return 'Unknown';
   const w1 = weapon1.trim();
-  const w2 = weapon2 ? weapon2.trim() : "";
-
+  const w2 = weapon2 ? weapon2.trim() : '';
   let key = (w1 + w2).replace(/\s+/g, '');
   if (weaponToClass[key]) return weaponToClass[key];
-
   key = (w2 + w1).replace(/\s+/g, '');
   if (weaponToClass[key]) return weaponToClass[key];
-
   return `${w1} ${w2}`.trim();
 }
 
@@ -33,16 +30,9 @@ export default function MatchStats() {
         setMatches(res.data);
         if (res.data.length > 0) setSelectedMatchId(res.data[0].id);
       })
-      .catch(err => {
-        console.error(err);
-        setListError(true);
-      })
+      .catch(err => { console.error(err); setListError(true); })
       .finally(() => setLoading(false));
   };
-
-  useEffect(() => {
-    loadMatches();
-  }, []);
 
   const loadDetail = (matchId) => {
     if (!matchId) return;
@@ -50,15 +40,11 @@ export default function MatchStats() {
     setDetailError(false);
     axios.get(`/api/match/${matchId}`)
       .then(res => setMatchDetail(res.data))
-      .catch(err => {
-        console.error(err);
-        setDetailError(true);
-      });
+      .catch(err => { console.error(err); setDetailError(true); });
   };
 
-  useEffect(() => {
-    loadDetail(selectedMatchId);
-  }, [selectedMatchId]);
+  useEffect(() => { loadMatches(); }, []);
+  useEffect(() => { loadDetail(selectedMatchId); }, [selectedMatchId]);
 
   const selectedMatch = matchDetail?.match;
   const players = matchDetail?.players || [];
@@ -71,191 +57,219 @@ export default function MatchStats() {
   const topHealing = [...players].sort((a, b) => (b.healing || 0) - (a.healing || 0)).slice(0, 10);
 
   return (
-    <div className="min-h-screen bg-[#07060a] text-[#e8e2d4] pb-20">
-      <div className="max-w-7xl mx-auto px-6 py-10">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
-          <div>
-            <h1 className="text-5xl font-bold text-[#e8c96b]">Match Stats</h1>
-            <p className="text-[#9c9384] mt-1">Detailed breakdown per wargame</p>
-          </div>
-
-          <div className="w-full md:w-96">
-            <select
-              value={selectedMatchId || ''}
-              onChange={(e) => setSelectedMatchId(e.target.value)}
-              className="w-full bg-[#0f0d13] border border-[#c9973a]/40 rounded-2xl px-6 py-4 text-lg focus:outline-none focus:border-[#e8c96b]"
-            >
-              <option value="">— Select a match —</option>
-              {matches.map(m => (
-                <option key={m.id} value={m.id}>
-                  {new Date(m.match_date).toLocaleDateString()} — {m.title}
-                </option>
-              ))}
-            </select>
-          </div>
+    <div className="max-w-7xl mx-auto px-6 py-12">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-4">
+        <div>
+          <div className="eyebrow text-brass text-[11px] mb-3">The Field Logged</div>
+          <h1 className="font-display text-4xl md:text-5xl text-bone tracking-[0.08em]">War Record</h1>
+          <p className="text-ash mt-2">Every engagement, broken down to the blade.</p>
         </div>
 
-        {/* List load failure — dropdown can't populate */}
-        {listError && (
-          <div className="bg-[#0f0d13] border border-red-500/40 rounded-2xl p-8 text-center">
-            <div className="text-red-400 font-semibold text-lg mb-2">Couldn't load matches</div>
-            <p className="text-[#9c9384] mb-6">The server may be having trouble. Please try again.</p>
-            <button
-              onClick={loadMatches}
-              className="px-6 py-2.5 bg-[#c9973a] hover:bg-[#e8c96b] text-black font-bold rounded-full transition"
-            >
-              Retry
-            </button>
+        <div className="w-full md:w-96">
+          <label className="eyebrow text-[10px] text-ash block mb-2">Select engagement</label>
+          <select
+            value={selectedMatchId || ''}
+            onChange={(e) => setSelectedMatchId(e.target.value)}
+            className="w-full bg-panel border border-line rounded-sm px-5 py-3.5 text-bone focus:outline-none focus:border-brass transition-colors"
+          >
+            <option value="">— choose —</option>
+            {matches.map(m => (
+              <option key={m.id} value={m.id}>
+                {new Date(m.match_date).toLocaleDateString()} — {m.title}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div className="rule-fade mb-12" />
+
+      {/* List failure */}
+      {listError && (
+        <RecordError
+          onRetry={loadMatches}
+          title="The record could not be summoned"
+          message="The hall may be offline. Try again."
+        />
+      )}
+
+      {/* Detail failure */}
+      {detailError && !listError && (
+        <RecordError
+          onRetry={() => loadDetail(selectedMatchId)}
+          title="This engagement could not be read"
+          message="Something went wrong fetching the details."
+        />
+      )}
+
+      {/* Loading the chosen engagement */}
+      {selectedMatchId && !matchDetail && !detailError && !listError && (
+        <div className="py-20 text-center text-ash">Unrolling the scroll…</div>
+      )}
+
+      {/* Empty */}
+      {!loading && !listError && matches.length === 0 && (
+        <div className="py-20 text-center text-ash">No engagements logged yet. The field awaits.</div>
+      )}
+
+      {selectedMatch && !detailError && (
+        <>
+          <h2 className="font-display text-3xl text-brassbright tracking-[0.06em] mb-1">{selectedMatch.title}</h2>
+          <p className="text-ash mb-12">
+            {new Date(selectedMatch.match_date).toLocaleDateString('en-US', {
+              weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+            })}
+          </p>
+
+          {/* Team cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-16">
+            <TeamStatCard color="Red" stats={teamStats.Red || {}} />
+            <TeamStatCard color="Yellow" stats={teamStats.Yellow || {}} />
           </div>
-        )}
 
-        {/* Detail load failure for the selected match */}
-        {detailError && !listError && (
-          <div className="bg-[#0f0d13] border border-red-500/40 rounded-2xl p-8 text-center">
-            <div className="text-red-400 font-semibold text-lg mb-2">Couldn't load this match</div>
-            <p className="text-[#9c9384] mb-6">Something went wrong fetching the match details.</p>
-            <button
-              onClick={() => loadDetail(selectedMatchId)}
-              className="px-6 py-2.5 bg-[#c9973a] hover:bg-[#e8c96b] text-black font-bold rounded-full transition"
-            >
-              Retry
-            </button>
+          {/* Top 10 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
+            <Top10Card title="Most Kills" icon={<Sword className="w-4 h-4" />} data={topKills} field="kills" />
+            <Top10Card title="Damage Dealt" icon={<Target className="w-4 h-4" />} data={topDamage} field="damage_dealt" unit="M" />
+            <Top10Card title="Damage Taken" icon={<ShieldAlert className="w-4 h-4" />} data={topDamageTaken} field="damage_taken" unit="M" />
+            <Top10Card title="Healing" icon={<Heart className="w-4 h-4" />} data={topHealing} field="healing" unit="M" />
           </div>
-        )}
 
-        {/* Loading the selected match (no error, not yet arrived) */}
-        {selectedMatchId && !matchDetail && !detailError && !listError && (
-          <div className="py-20 text-center text-[#9c9384]">Loading match…</div>
-        )}
-
-        {selectedMatch && !detailError && (
-          <>
-            <h2 className="text-3xl font-bold text-[#e8c96b] mb-1">{selectedMatch.title}</h2>
-            <p className="text-[#9c9384] mb-12">
-              {new Date(selectedMatch.match_date).toLocaleDateString('en-US', { 
-                weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' 
-              })}
-            </p>
-
-            {/* Red vs Yellow Team Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-16">
-              <TeamStatCard color="Red" stats={teamStats.Red || {}} />
-              <TeamStatCard color="Yellow" stats={teamStats.Yellow || {}} />
-            </div>
-
-            {/* Top 10 Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
-              <Top10Card title="Top Kills" icon={<Sword />} data={topKills} field="kills" />
-              <Top10Card title="Top Damage Dealt" icon={<Target />} data={topDamage} field="damage_dealt" unit="M" />
-              <Top10Card title="Top Damage Taken" icon={<Target />} data={topDamageTaken} field="damage_taken" unit="M" />
-              <Top10Card title="Top Healing" icon={<Heart />} data={topHealing} field="healing" unit="M" />
-            </div>
-
-            {/* Class Distribution */}
-            <div className="mb-16">
-              <h3 className="text-2xl font-semibold mb-6 flex items-center gap-3">
-                <Users className="w-6 h-6" /> Class Distribution
-              </h3>
-              <div className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-3xl p-8">
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {classBreakdown.length > 0 ? classBreakdown.map((item, i) => (
-                    <div key={i} className="flex justify-between items-center bg-[#1a1724] rounded-2xl px-5 py-4">
-                      <span className="font-medium text-[#e8c96b]">{item.name}</span>
-                      <div className="text-right">
-                        <span className="font-mono text-lg">{item.count}</span>
-                        <span className="text-xs text-[#9c9384] ml-2">
-                          ({((item.count / classBreakdown.reduce((a, b) => a + b.count, 0)) * 100).toFixed(1)}%)
+          {/* Class distribution */}
+          <div className="mb-16">
+            <h3 className="font-display text-xl text-bone tracking-[0.08em] mb-5 flex items-center gap-3">
+              <Users className="w-5 h-5 text-brass" /> Fielded Classes
+            </h3>
+            <div className="panel rounded-sm p-7">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {classBreakdown.length > 0 ? classBreakdown.map((item, i) => {
+                  const total = classBreakdown.reduce((a, b) => a + b.count, 0);
+                  return (
+                    <div key={i} className="flex justify-between items-center bg-hall border border-line rounded-sm px-4 py-3">
+                      <span className="font-medium text-brassbright">{item.name}</span>
+                      <div className="text-right font-mono">
+                        <span className="text-bone">{item.count}</span>
+                        <span className="text-xs text-ash ml-2">
+                          {((item.count / total) * 100).toFixed(0)}%
                         </span>
                       </div>
                     </div>
-                  )) : (
-                    <p className="col-span-full text-center py-8 text-[#9c9384]">No class data available</p>
-                  )}
-                </div>
+                  );
+                }) : (
+                  <p className="col-span-full text-center py-8 text-ash">No class data recorded.</p>
+                )}
               </div>
             </div>
+          </div>
 
-            {/* Full Player Rankings */}
-            <div>
-              <h3 className="text-2xl font-semibold mb-6 flex items-center gap-3">
-                <Sword className="w-6 h-6" /> Full Player Rankings
-              </h3>
-              <div className="bg-[#0f0d13] rounded-2xl border border-[#c9973a]/20 overflow-auto max-h-[620px]">
-                <table className="w-full min-w-[900px]">
-                  <thead className="sticky top-0 bg-[#1a1724] border-b border-[#c9973a]/30">
-                    <tr>
-                      <th className="text-left p-5 text-sm text-[#9c9384]">Rank</th>
-                      <th className="text-left p-5 text-sm text-[#9c9384]">Class</th>
-                      <th className="text-left p-5 text-sm text-[#9c9384]">Guild</th>
-                      <th className="text-left p-5 text-sm text-[#9c9384]">Player</th>
-                      <th className="text-center p-5 text-sm text-[#9c9384]">Kills</th>
-                      <th className="text-center p-5 text-sm text-[#9c9384]">Assists</th>
-                      <th className="text-center p-5 text-sm text-[#9c9384]">Damage Dealt</th>
-                      <th className="text-center p-5 text-sm text-[#9c9384]">Damage Taken</th>
-                      <th className="text-center p-5 text-sm text-[#9c9384]">Healing</th>
+          {/* Full roster */}
+          <div>
+            <h3 className="font-display text-xl text-bone tracking-[0.08em] mb-5 flex items-center gap-3">
+              <Sword className="w-5 h-5 text-brass" /> Full Roster
+            </h3>
+            <div className="panel rounded-sm overflow-auto max-h-[620px]">
+              <table className="w-full min-w-[900px] text-sm">
+                <thead className="sticky top-0 bg-panelup border-b border-line">
+                  <tr className="eyebrow text-[10px] text-ash">
+                    <th className="text-left p-4 font-normal">Rank</th>
+                    <th className="text-left p-4 font-normal">Class</th>
+                    <th className="text-left p-4 font-normal">Guild</th>
+                    <th className="text-left p-4 font-normal">Player</th>
+                    <th className="text-center p-4 font-normal">Kills</th>
+                    <th className="text-center p-4 font-normal">Assists</th>
+                    <th className="text-center p-4 font-normal">Dmg Dealt</th>
+                    <th className="text-center p-4 font-normal">Dmg Taken</th>
+                    <th className="text-center p-4 font-normal">Healing</th>
+                  </tr>
+                </thead>
+                <tbody className="font-mono">
+                  {players.map((p, i) => (
+                    <tr key={i} className="border-b border-line/60 hover:bg-panelup transition-colors">
+                      <td className="p-4 text-brass">{p.rank}</td>
+                      <td className="p-4 font-sans font-medium text-brassbright">{getClassName(p.weapon_1, p.weapon_2)}</td>
+                      <td className="p-4 font-sans text-ash">{p.guild_name}</td>
+                      <td className="p-4 font-sans font-semibold text-bone">{p.player_name}</td>
+                      <td className="p-4 text-center text-brassbright">{p.kills || 0}</td>
+                      <td className="p-4 text-center text-bone">{p.assists || 0}</td>
+                      <td className="p-4 text-center text-bone">{((p.damage_dealt || 0) / 1e6).toFixed(1)}M</td>
+                      <td className="p-4 text-center text-bone">{((p.damage_taken || 0) / 1e6).toFixed(1)}M</td>
+                      <td className="p-4 text-center text-bone">{((p.healing || 0) / 1e6).toFixed(1)}M</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {players.map((p, i) => (
-                      <tr key={i} className="border-b border-[#c9973a]/10 hover:bg-[#1a1724]">
-                        <td className="p-5 font-mono text-[#c9973a]">{p.rank}</td>
-                        <td className="p-5 font-medium text-[#e8c96b]">{getClassName(p.weapon_1, p.weapon_2)}</td>
-                        <td className="p-5 text-[#9c9384]">{p.guild_name}</td>
-                        <td className="p-5 font-semibold">{p.player_name}</td>
-                        <td className="p-5 text-center font-bold text-[#e8c96b]">{p.kills || 0}</td>
-                        <td className="p-5 text-center">{p.assists || 0}</td>
-                        <td className="p-5 text-center">{((p.damage_dealt || 0) / 1000000).toFixed(1)}M</td>
-                        <td className="p-5 text-center">{((p.damage_taken || 0) / 1000000).toFixed(1)}M</td>
-                        <td className="p-5 text-center">{((p.healing || 0) / 1000000).toFixed(1)}M</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ── sub-components ───────────────────────────────────────────── */
+
+function TeamStatCard({ color, stats }) {
+  const isRed = color === 'Red';
+  return (
+    <div className={`rounded-sm p-7 border ${isRed ? 'border-oxblood/50 bg-oxblooddeep/20' : 'border-brass/40 bg-panel'}`}>
+      <div className={`font-display text-xl tracking-[0.1em] mb-6 text-center ${isRed ? 'text-oxblood' : 'text-brassbright'}`}>
+        {color} Team
+      </div>
+      <div className="space-y-4 font-mono">
+        <Row label="Kills" value={(stats.kills || 0).toLocaleString()} />
+        <Row label="Damage Dealt" value={((stats.damage_dealt || 0) / 1e6).toFixed(1) + 'M'} />
+        <Row label="Damage Taken" value={((stats.damage_taken || 0) / 1e6).toFixed(1) + 'M'} />
+        <Row label="Healing" value={((stats.healing || 0) / 1e6).toFixed(1) + 'M'} />
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, value }) {
+  return (
+    <div className="flex justify-between items-baseline">
+      <span className="font-sans text-ash text-sm">{label}</span>
+      <span className="text-bone">{value}</span>
+    </div>
+  );
+}
+
+function Top10Card({ title, icon, data, field, unit = '' }) {
+  return (
+    <div className="panel rounded-sm p-6">
+      <div className="flex items-center gap-2 text-brass mb-5">
+        {icon}
+        <h4 className="eyebrow text-[10px] text-bone">{title}</h4>
+      </div>
+      <div className="space-y-2.5 text-sm font-mono">
+        {data.length > 0 ? data.map((p, i) => (
+          <div key={i} className="flex justify-between gap-3">
+            <span className="font-sans text-ash truncate">
+              <span className="text-brass/60 mr-2">{i + 1}</span>{p.player_name}
+            </span>
+            <span className="text-brassbright shrink-0">
+              {unit ? ((p[field] || 0) / 1e6).toFixed(1) + unit : (p[field] || 0)}
+            </span>
+          </div>
+        )) : (
+          <p className="text-ash text-center py-4 font-sans">—</p>
         )}
       </div>
     </div>
   );
 }
 
-/* ====================== SUB COMPONENTS ====================== */
-
-function TeamStatCard({ color, stats }) {
+function RecordError({ onRetry, title, message }) {
   return (
-    <div className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-3xl p-8">
-      <div className={`text-2xl font-bold mb-6 text-center ${color === 'Red' ? 'text-red-500' : 'text-yellow-400'}`}>
-        {color} Team
-      </div>
-      <div className="space-y-6">
-        <div className="flex justify-between"><span className="text-[#9c9384]">Kills</span><span className="font-bold text-[#e8c96b]">{(stats.kills || 0).toLocaleString()}</span></div>
-        <div className="flex justify-between"><span className="text-[#9c9384]">Damage Dealt</span><span className="font-bold text-[#e8c96b]">{((stats.damage_dealt || 0) / 1000000).toFixed(1)}M</span></div>
-        <div className="flex justify-between"><span className="text-[#9c9384]">Damage Taken</span><span className="font-bold text-[#e8c96b]">{((stats.damage_taken || 0) / 1000000).toFixed(1)}M</span></div>
-        <div className="flex justify-between"><span className="text-[#9c9384]">Healing</span><span className="font-bold text-[#e8c96b]">{((stats.healing || 0) / 1000000).toFixed(1)}M</span></div>
-      </div>
-    </div>
-  );
-}
-
-function Top10Card({ title, icon, data, field, unit = "" }) {
-  return (
-    <div className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-3xl p-8">
-      <div className="flex items-center gap-3 mb-6">
-        {icon}
-        <h4 className="font-semibold">{title}</h4>
-      </div>
-      <div className="space-y-3 text-sm">
-        {data.map((p, i) => (
-          <div key={i} className="flex justify-between">
-            <span className="text-[#9c9384]">{p.player_name}</span>
-            <span className="font-bold text-[#e8c96b]">
-              {unit ? ((p[field] || 0) / 1000000).toFixed(1) + unit : (p[field] || 0)}
-            </span>
-          </div>
-        ))}
-      </div>
+    <div className="panel rounded-sm p-8 text-center">
+      <div className="font-display text-oxblood tracking-wide text-lg mb-2">{title}</div>
+      <p className="text-ash mb-6">{message}</p>
+      <button
+        onClick={onRetry}
+        className="px-6 py-2.5 bg-brass hover:bg-brassbright text-ink font-semibold rounded-sm transition-colors"
+      >
+        Try again
+      </button>
     </div>
   );
 }
