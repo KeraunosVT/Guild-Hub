@@ -1,8 +1,11 @@
 import { BrowserRouter as Router, Routes, Route, Outlet } from 'react-router-dom';
+import { AuthProvider, useAuth } from './auth';
 import Masthead from './components/Masthead';
 import Footer from './components/Footer';
+import Sigil from './components/Sigil';
 import Home from './pages/Home';
 import MatchStats from './pages/MatchStats';
+import Login from './pages/Login';
 
 function Layout() {
   return (
@@ -16,7 +19,21 @@ function Layout() {
   );
 }
 
-function App() {
+function Splash() {
+  return (
+    <div className="min-h-screen bg-ink hall-grain flex flex-col items-center justify-center gap-5">
+      <Sigil className="w-12 h-16 text-brass rise" />
+      <div className="eyebrow text-[10px] text-ash">Verifying standing…</div>
+    </div>
+  );
+}
+
+// Full login wall: nothing past the gate renders without a valid session.
+function Gate() {
+  const { user, loading } = useAuth();
+  if (loading) return <Splash />;
+  if (!user) return <Login />;
+
   return (
     <Router>
       <Routes>
@@ -29,6 +46,14 @@ function App() {
         </Route>
       </Routes>
     </Router>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <Gate />
+    </AuthProvider>
   );
 }
 

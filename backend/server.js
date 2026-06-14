@@ -7,11 +7,14 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
+const { router: authRouter, requireAuth } = require('./auth');
 
 const app = express();
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
+app.use(cookieParser());
 
 console.log("✅ Server started successfully");
 
@@ -41,8 +44,18 @@ const GUILD_ALIASES = {
 };
 const canonicalGuild = (name) => GUILD_ALIASES[(name || '').trim()] || (name || '').trim() || 'Unknown';
 
-// Health check
+// Health check (public)
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+
+// Discord login routes (public)
+app.use('/api/auth', authRouter);
+
+// Everything else under /api requires a valid guild-member session.
+// Full login wall: stats, matches, and match detail are all gated.
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health' || req.path.startsWith('/auth')) return next();
+  return requireAuth(req, res, next);
+});
 
 // ── STATS SUMMARY ────────────────────────────────────────────────────────────
 app.get('/api/stats/summary', async (req, res) => {
