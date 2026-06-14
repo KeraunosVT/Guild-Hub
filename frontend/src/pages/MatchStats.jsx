@@ -1,10 +1,9 @@
-import { Trophy, Target, Heart, Sword, Calendar, BarChart3 } from 'lucide-react';
+import { Sword, Trophy, Target, Heart, Users } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-// Weapon to Class Mapping
-const weaponToClass = {
-  "CrossbowDaggers": "Scorpion", "CrossbowGreatsword": "Outrider", "CrossbowLongbow": "Scout",
+// Weapon to Class Mapping (same as before)
+const weaponToClass = { "CrossbowDaggers": "Scorpion", "CrossbowGreatsword": "Outrider", "CrossbowLongbow": "Scout",
   "CrossbowOrb": "Crucifix", "CrossbowSnS": "Raider", "CrossbowSpear": "Cavalier",
   "CrossbowStaff": "Battleweaver", "CrossbowWand": "Fury", "DaggersOrb": "Lunarch",
   "DaggersWand": "Darkblighter", "GreatswordDaggers": "Ravager", "GreatswordLongbow": "Ranger",
@@ -15,8 +14,7 @@ const weaponToClass = {
   "SpearDaggers": "Shadowdancer", "SpearLongbow": "Impaler", "SpearOrb": "Polaris",
   "SpearWand": "Voidlance", "StaffDaggers": "Spellblade", "StaffGreatsword": "Sentinel",
   "StaffLongbow": "Liberator", "StaffOrb": "Enigma", "StaffSpear": "Eradicator",
-  "StaffWand": "Invocator", "WandLongbow": "Seeker", "WandOrb": "Oracle"
-};
+  "StaffWand": "Invocator", "WandLongbow": "Seeker", "WandOrb": "Oracle" };
 
 function getClassName(weapon1, weapon2) {
   if (!weapon1) return "Unknown";
@@ -60,87 +58,83 @@ export default function MatchStats() {
   const players = matchDetail?.players || [];
   const classBreakdown = matchDetail?.classBreakdown || [];
 
+  // Top 10s
   const topKills = [...players].sort((a, b) => (b.kills || 0) - (a.kills || 0)).slice(0, 10);
   const topDamage = [...players].sort((a, b) => (b.damage_dealt || 0) - (a.damage_dealt || 0)).slice(0, 10);
+  const topDamageTaken = [...players].sort((a, b) => (b.damage_taken || 0) - (a.damage_taken || 0)).slice(0, 10);
   const topHealing = [...players].sort((a, b) => (b.healing || 0) - (a.healing || 0)).slice(0, 10);
 
   return (
-    <div className="min-h-screen bg-[#07060a] text-[#e8e2d4]">
-      <div className="max-w-7xl mx-auto px-6 py-12">
-        <h1 className="text-5xl font-bold text-[#e8c96b] mb-2">Match Stats</h1>
-        <p className="text-[#9c9384]">Detailed performance per match</p>
+    <div className="min-h-screen bg-[#07060a] text-[#e8e2d4] pb-20">
+      <div className="max-w-7xl mx-auto px-6 py-10">
+        {/* Header: Title + Dropdown */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+          <div>
+            <h1 className="text-5xl font-bold text-[#e8c96b]">Match Stats</h1>
+            <p className="text-[#9c9384] mt-1">Detailed breakdown per wargame</p>
+          </div>
 
-        {/* Match Dropdown */}
-        <div className="mt-8 max-w-lg">
-          <label className="block text-sm text-[#9c9384] mb-2">Select Match</label>
-          <select
-            value={selectedMatchId || ''}
-            onChange={(e) => setSelectedMatchId(e.target.value)}
-            className="w-full bg-[#0f0d13] border border-[#c9973a]/30 rounded-xl p-4 text-lg focus:outline-none focus:border-[#e8c96b]"
-          >
-            <option value="">— Select a match —</option>
-            {matches.map(match => (
-              <option key={match.id} value={match.id}>
-                {new Date(match.match_date).toLocaleDateString()} — {match.title}
-              </option>
-            ))}
-          </select>
+          <div className="w-full md:w-96">
+            <select
+              value={selectedMatchId || ''}
+              onChange={(e) => setSelectedMatchId(e.target.value)}
+              className="w-full bg-[#0f0d13] border border-[#c9973a]/40 rounded-2xl px-6 py-4 text-lg focus:outline-none focus:border-[#e8c96b]"
+            >
+              <option value="">— Select a match —</option>
+              {matches.map(m => (
+                <option key={m.id} value={m.id}>
+                  {new Date(m.match_date).toLocaleDateString()} — {m.title}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {selectedMatch && (
-          <div className="mt-12">
+          <>
             <h2 className="text-3xl font-bold text-[#e8c96b] mb-1">{selectedMatch.title}</h2>
-            <p className="text-[#9c9384]">
-              {new Date(selectedMatch.match_date).toLocaleDateString('en-US', { 
-                weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' 
-              })}
+            <p className="text-[#9c9384] mb-12">
+              {new Date(selectedMatch.match_date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
             </p>
 
+            {/* 4 Team Stat Charts */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
+              {/* Add team breakdown cards here - we'll enhance backend later if needed */}
+              <TeamStatCard title="Total Kills" value="—" icon={<Sword />} />
+              <TeamStatCard title="Damage Dealt" value="—" icon={<Target />} unit="M" />
+              <TeamStatCard title="Damage Taken" value="—" icon={<Target />} unit="M" />
+              <TeamStatCard title="Total Healing" value="—" icon={<Heart />} unit="M" />
+            </div>
+
             {/* Top 10 Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-12">
-              <Top10Card title="Top 10 Kills" icon={<Sword className="w-8 h-8" />} data={topKills} field="kills" />
-              <Top10Card title="Top 10 Damage" icon={<Target className="w-8 h-8" />} data={topDamage} field="damage_dealt" unit="M" />
-              <Top10Card title="Top 10 Healing" icon={<Heart className="w-8 h-8" />} data={topHealing} field="healing" unit="M" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
+              <Top10Card title="Top Kills" icon={<Sword />} data={topKills} field="kills" />
+              <Top10Card title="Top Damage Dealt" icon={<Target />} data={topDamage} field="damage_dealt" unit="M" />
+              <Top10Card title="Top Damage Taken" icon={<Target />} data={topDamageTaken} field="damage_taken" unit="M" />
+              <Top10Card title="Top Healing" icon={<Heart />} data={topHealing} field="healing" unit="M" />
             </div>
 
-            {/* Class Breakdown Chart */}
-            <div className="mt-16">
+            {/* Class Breakdown Pie Chart */}
+            <div className="mb-16">
               <h3 className="text-2xl font-semibold mb-6 flex items-center gap-3">
-                <BarChart3 className="w-6 h-6" /> Class Distribution
+                <Users className="w-6 h-6" /> Class Distribution
               </h3>
-              <div className="bg-[#0f0d13] rounded-2xl p-8 border border-[#c9973a]/20">
-                <div className="space-y-6">
-                  {classBreakdown.length > 0 ? classBreakdown.map(({ name, count }) => (
-                    <div key={name} className="flex items-center gap-4">
-                      <div className="w-36 text-right font-medium text-[#e8c96b]">{name}</div>
-                      <div className="flex-1 bg-[#1a1724] rounded-full h-5 overflow-hidden">
-                        <div 
-                          className="h-full bg-gradient-to-r from-[#c9973a] to-[#e8c96b] transition-all"
-                          style={{ width: `${Math.max(10, (count / Math.max(...classBreakdown.map(c => c.count))) * 100)}%` }}
-                        />
-                      </div>
-                      <div className="w-12 font-mono text-right text-[#e8c96b]">{count}</div>
-                    </div>
-                  )) : (
-                    <p className="text-center text-[#9c9384] py-8">No class data available</p>
-                  )}
-                </div>
-              </div>
+              <ClassPieChart data={classBreakdown} />
             </div>
 
-            {/* Full Player Table */}
-            <div className="mt-16">
+            {/* Full Player Rankings - Scrollable */}
+            <div>
               <h3 className="text-2xl font-semibold mb-6 flex items-center gap-3">
                 <Sword className="w-6 h-6" /> Full Player Rankings
               </h3>
-              <div className="bg-[#0f0d13] rounded-2xl overflow-hidden border border-[#c9973a]/20">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-[#c9973a]/30 bg-[#1a1724]">
+              <div className="bg-[#0f0d13] rounded-2xl border border-[#c9973a]/20 overflow-auto max-h-[600px]">
+                <table className="w-full min-w-[900px]">
+                  <thead className="sticky top-0 bg-[#1a1724] border-b border-[#c9973a]/30">
+                    <tr>
                       <th className="text-left p-5 text-sm text-[#9c9384]">Rank</th>
                       <th className="text-left p-5 text-sm text-[#9c9384]">Class</th>
                       <th className="text-left p-5 text-sm text-[#9c9384]">Guild</th>
-                      <th className="text-left p-5 text-sm text-[#9c9384]">Player Name</th>
+                      <th className="text-left p-5 text-sm text-[#9c9384]">Player</th>
                       <th className="text-center p-5 text-sm text-[#9c9384]">Kills</th>
                       <th className="text-center p-5 text-sm text-[#9c9384]">Assists</th>
                       <th className="text-center p-5 text-sm text-[#9c9384]">Damage Dealt</th>
@@ -152,46 +146,107 @@ export default function MatchStats() {
                     {players.map((p, i) => (
                       <tr key={i} className="border-b border-[#c9973a]/10 hover:bg-[#1a1724]">
                         <td className="p-5 font-mono text-[#c9973a]">{p.rank}</td>
-                        <td className="p-5 font-medium text-[#e8c96b]">
-                          {getClassName(p.weapon_1, p.weapon_2)}
-                        </td>
+                        <td className="p-5 font-medium text-[#e8c96b]">{getClassName(p.weapon_1, p.weapon_2)}</td>
                         <td className="p-5 text-[#9c9384]">{p.guild_name}</td>
                         <td className="p-5 font-semibold">{p.player_name}</td>
                         <td className="p-5 text-center font-bold text-[#e8c96b]">{p.kills}</td>
                         <td className="p-5 text-center">{p.assists}</td>
-                        <td className="p-5 text-center">{(p.damage_dealt / 1000000).toFixed(1)}M</td>
-                        <td className="p-5 text-center">{(p.damage_taken / 1000000).toFixed(1)}M</td>
-                        <td className="p-5 text-center">{(p.healing / 1000000).toFixed(1)}M</td>
+                        <td className="p-5 text-center">{(p.damage_dealt/1e6).toFixed(1)}M</td>
+                        <td className="p-5 text-center">{(p.damage_taken/1e6).toFixed(1)}M</td>
+                        <td className="p-5 text-center">{(p.healing/1e6).toFixed(1)}M</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>
   );
 }
 
-// Top 10 Card Component
+/* ====================== SUB COMPONENTS ====================== */
+
+function TeamStatCard({ title, value, icon, unit = "" }) {
+  return (
+    <div className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-3xl p-8 text-center">
+      <div className="flex justify-center mb-4 text-[#e8c96b]">{icon}</div>
+      <div className="text-4xl font-bold text-[#e8c96b] mb-1">{value}</div>
+      <div className="text-sm text-[#9c9384] uppercase tracking-widest">{title}</div>
+    </div>
+  );
+}
+
 function Top10Card({ title, icon, data, field, unit = "" }) {
   return (
     <div className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-3xl p-8">
       <div className="flex items-center gap-3 mb-6">
         {icon}
-        <h3 className="font-semibold text-lg">{title}</h3>
+        <h4 className="font-semibold">{title}</h4>
       </div>
-      <div className="space-y-4">
-        {data.slice(0, 10).map((player, i) => (
-          <div key={i} className="flex justify-between text-sm">
-            <span className="text-[#9c9384]">{player.player_name}</span>
+      <div className="space-y-3 text-sm">
+        {data.map((p, i) => (
+          <div key={i} className="flex justify-between">
+            <span className="text-[#9c9384]">{p.player_name}</span>
             <span className="font-bold text-[#e8c96b]">
-              {field === 'damage_dealt' || field === 'healing' 
-                ? (player[field] / 1000000).toFixed(1) + unit 
-                : player[field]}
+              {unit ? (p[field] / 1e6).toFixed(1) + unit : p[field]}
             </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ClassPieChart({ data }) {
+  if (!data.length) return <p className="text-center py-12 text-[#9c9384]">No class data</p>;
+
+  const total = data.reduce((sum, item) => sum + item.count, 0);
+  let startAngle = 0;
+
+  return (
+    <div className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-3xl p-10 flex flex-col md:flex-row items-center gap-12">
+      <div className="relative w-80 h-80 flex-shrink-0">
+        <svg viewBox="0 0 100 100" className="w-full h-full">
+          {data.map((slice, i) => {
+            const percentage = slice.count / total;
+            const angle = percentage * 360;
+            const endAngle = startAngle + angle;
+            const largeArc = angle > 180 ? 1 : 0;
+
+            const x1 = 50 + 40 * Math.cos((startAngle * Math.PI) / 180);
+            const y1 = 50 + 40 * Math.sin((startAngle * Math.PI) / 180);
+            const x2 = 50 + 40 * Math.cos((endAngle * Math.PI) / 180);
+            const y2 = 50 + 40 * Math.sin((endAngle * Math.PI) / 180);
+
+            const path = `M 50 50 L ${x1} ${y1} A 40 40 0 ${largeArc} 1 ${x2} ${y2} Z`;
+
+            startAngle = endAngle;
+
+            return (
+              <path
+                key={i}
+                d={path}
+                fill={`hsl(${i * 35}, 85%, 58%)`}
+                stroke="#0f0d13"
+                strokeWidth="0.5"
+              />
+            );
+          })}
+        </svg>
+      </div>
+
+      <div className="flex-1 space-y-4">
+        {data.map((item, i) => (
+          <div key={i} className="flex items-center gap-4">
+            <div className="w-5 h-5 rounded" style={{ background: `hsl(${i * 35}, 85%, 58%)` }} />
+            <div className="flex-1">
+              <div className="font-medium text-[#e8c96b]">{item.name}</div>
+              <div className="text-sm text-[#9c9384]">{item.count} players</div>
+            </div>
+            <div className="font-mono text-right w-16">{((item.count / total) * 100).toFixed(1)}%</div>
           </div>
         ))}
       </div>
