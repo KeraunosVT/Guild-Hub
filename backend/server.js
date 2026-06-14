@@ -68,7 +68,9 @@ app.get('/api/stats/summary', async (req, res) => {
 
     // Aggregation via RPC — bypasses the 1,000-row PostgREST limit entirely
     const { data: aggData, error: aggError } = await supabase
-      .rpc('get_stats_summary');
+      .rpc('get_stats_summary', {
+        guild_filter: guildFilter || null
+      });
 
     if (aggError) throw aggError;
 
@@ -100,7 +102,8 @@ app.get('/api/matches/recent', async (req, res) => {
   if (!supabase) return res.json([]);
 
   try {
-    const limit = parseInt(req.query.limit) || 6;
+    // Clamp the limit so a caller can't request, say, ?limit=100000
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 6, 1), 50);
 
     const { data: matches, error } = await supabase
       .from('wargame_matches')
@@ -109,18 +112,25 @@ app.get('/api/matches/recent', async (req, res) => {
       .limit(limit);
 
     if (error) throw error;
+    if (!matches || matches.length === 0) return res.json([]);
 
-    const enriched = await Promise.all(matches.map(async (match) => {
-      const { data: players, error: pError } = await supabase
-        .from('player_match_stats')
-        .select('guild_name, kills, damage_dealt, healing')
-        .eq('match_id', match.id);
+    // Single query for every player row across all matches (no N+1)
+    const matchIds = matches.map(m => m.id);
+    const { data: allPlayers, error: pError } = await supabase
+      .from('player_match_stats')
+      .select('match_id, guild_name, kills, damage_dealt, healing')
+      .in('match_id', matchIds);
 
-      if (pError) {
-        console.error('Player stats error for match', match.id, pError);
-        return { ...match, kills: 0, damage: 0, healing: 0, killDifference: 0 };
-      }
+    if (pError) throw pError;
 
+    // Group player rows by match_id in memory
+    const playersByMatch = {};
+    (allPlayers || []).forEach(p => {
+      (playersByMatch[p.match_id] ||= []).push(p);
+    });
+
+    const enriched = matches.map(match => {
+      const players = playersByMatch[match.id] || [];
       const guildStats = {};
 
       players.forEach(p => {
@@ -148,7 +158,7 @@ app.get('/api/matches/recent', async (req, res) => {
         killDifference,
         winningGuild
       };
-    }));
+    });
 
     res.json(enriched);
   } catch (err) {
