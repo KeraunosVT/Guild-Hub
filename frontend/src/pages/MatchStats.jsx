@@ -2,7 +2,7 @@ import { Sword, Target, Heart, Users } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-// Weapon to Class Mapping
+// Weapon → Class Mapping
 const weaponToClass = {
   "CrossbowDaggers": "Scorpion", "CrossbowGreatsword": "Outrider", "CrossbowLongbow": "Scout",
   "CrossbowOrb": "Crucifix", "CrossbowSnS": "Raider", "CrossbowSpear": "Cavalier",
@@ -38,6 +38,7 @@ export default function MatchStats() {
   const [matchDetail, setMatchDetail] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Load matches
   useEffect(() => {
     axios.get('/api/matches/recent?limit=30')
       .then(res => {
@@ -48,6 +49,7 @@ export default function MatchStats() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Load selected match
   useEffect(() => {
     if (!selectedMatchId) return;
     setMatchDetail(null);
@@ -59,6 +61,12 @@ export default function MatchStats() {
   const selectedMatch = matchDetail?.match;
   const players = matchDetail?.players || [];
   const classBreakdown = matchDetail?.classBreakdown || [];
+  const teamStats = matchDetail?.teamStats || {};
+
+  const teams = Object.entries(teamStats).map(([guild, stats]) => ({
+    guild,
+    ...stats
+  }));
 
   const topKills = [...players].sort((a, b) => (b.kills || 0) - (a.kills || 0)).slice(0, 10);
   const topDamage = [...players].sort((a, b) => (b.damage_dealt || 0) - (a.damage_dealt || 0)).slice(0, 10);
@@ -100,12 +108,20 @@ export default function MatchStats() {
               })}
             </p>
 
-            {/* 4 Team Stat Cards */}
+            {/* Real Team Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
-              <TeamStatCard title="Total Kills" value="—" icon={<Sword />} />
-              <TeamStatCard title="Damage Dealt" value="—" icon={<Target />} unit="M" />
-              <TeamStatCard title="Damage Taken" value="—" icon={<Target />} unit="M" />
-              <TeamStatCard title="Total Healing" value="—" icon={<Heart />} unit="M" />
+              {teams.length > 0 ? teams.map((team, i) => (
+                <TeamStatCard
+                  key={i}
+                  guild={team.guild}
+                  kills={team.kills}
+                  damageDealt={team.damage_dealt}
+                  damageTaken={team.damage_taken}
+                  healing={team.healing}
+                />
+              )) : (
+                <div className="col-span-full text-center py-8 text-[#9c9384]">Loading team stats...</div>
+              )}
             </div>
 
             {/* Top 10 Cards */}
@@ -116,7 +132,7 @@ export default function MatchStats() {
               <Top10Card title="Top Healing" icon={<Heart />} data={topHealing} field="healing" unit="M" />
             </div>
 
-            {/* Clean Class Breakdown Card */}
+            {/* Class Distribution */}
             <div className="mb-16">
               <h3 className="text-2xl font-semibold mb-6 flex items-center gap-3">
                 <Users className="w-6 h-6" /> Class Distribution
@@ -140,7 +156,7 @@ export default function MatchStats() {
               </div>
             </div>
 
-            {/* Full Player Rankings - Scrollable */}
+            {/* Full Player Rankings */}
             <div>
               <h3 className="text-2xl font-semibold mb-6 flex items-center gap-3">
                 <Sword className="w-6 h-6" /> Full Player Rankings
@@ -187,12 +203,28 @@ export default function MatchStats() {
 
 /* ====================== SUB COMPONENTS ====================== */
 
-function TeamStatCard({ title, value, icon, unit = "" }) {
+function TeamStatCard({ guild, kills, damageDealt, damageTaken, healing }) {
   return (
-    <div className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-3xl p-8 text-center">
-      <div className="flex justify-center mb-4 text-[#e8c96b]">{icon}</div>
-      <div className="text-4xl font-bold text-[#e8c96b] mb-1">{value}</div>
-      <div className="text-sm text-[#9c9384] uppercase tracking-widest">{title}</div>
+    <div className="bg-[#0f0d13] border border-[#c9973a]/20 rounded-3xl p-8">
+      <div className="text-xl font-bold text-[#e8c96b] mb-6 text-center">{guild}</div>
+      <div className="space-y-6">
+        <div className="flex justify-between">
+          <span className="text-[#9c9384]">Kills</span>
+          <span className="font-bold text-[#e8c96b]">{kills.toLocaleString()}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-[#9c9384]">Damage Dealt</span>
+          <span className="font-bold text-[#e8c96b]">{(damageDealt / 1000000).toFixed(1)}M</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-[#9c9384]">Damage Taken</span>
+          <span className="font-bold text-[#e8c96b]">{(damageTaken / 1000000).toFixed(1)}M</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-[#9c9384]">Healing</span>
+          <span className="font-bold text-[#e8c96b]">{(healing / 1000000).toFixed(1)}M</span>
+        </div>
+      </div>
     </div>
   );
 }
