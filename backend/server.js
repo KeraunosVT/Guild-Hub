@@ -174,10 +174,11 @@ app.get('/api/match/:id', async (req, res) => {
 
     if (playersError) throw playersError;
 
-    // Class Breakdown
+    // Class Breakdown (simple version - no getClassName needed)
     const classCount = {};
     players.forEach(p => {
-      const className = getClassName(p.weapon_1, p.weapon_2); // We'll move helper to frontend later
+      const weaponKey = (p.weapon_1 + (p.weapon_2 || "")).replace(/\s+/g, '');
+      const className = weaponKey || "Unknown"; // Simple fallback
       classCount[className] = (classCount[className] || 0) + 1;
     });
 
@@ -190,7 +191,7 @@ app.get('/api/match/:id', async (req, res) => {
     });
   } catch (err) {
     console.error('Match detail error:', err);
-    res.status(500).json({ error: 'Failed to load match details' });
+    res.status(500).json({ error: 'Failed to load match details', message: err.message });
   }
 });
 
