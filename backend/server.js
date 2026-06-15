@@ -8,7 +8,7 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
-const { router: authRouter, requireAuth } = require('./auth');
+const { router: authRouter, requireAuth, requireAdmin } = require('./auth');
 
 const app = express();
 
@@ -56,6 +56,10 @@ app.use('/api', (req, res, next) => {
   if (req.path === '/health' || req.path.startsWith('/auth')) return next();
   return requireAuth(req, res, next);
 });
+
+// ── ADMIN AREA (requires admin role) ─────────────────────────────────────────
+const createAdminRouter = require('./admin');
+app.use('/api/admin', requireAdmin, createAdminRouter(supabase));
 
 // ── STATS SUMMARY ────────────────────────────────────────────────────────────
 app.get('/api/stats/summary', async (req, res) => {

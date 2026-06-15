@@ -1,0 +1,267 @@
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import axios from 'axios';
+import { useAuth } from '../auth';
+import Sigil from '../components/Sigil';
+import { UploadCloud, Plus, Trash2, Image as ImageIcon, FileSpreadsheet } from 'lucide-react';
+
+const WEAPONS = ['SnS', 'Greatsword', 'Daggers', 'Crossbow', 'Longbow', 'Staff', 'Wand', 'Spear', 'Orb'];
+const STAT_COLS = ['kills', 'assists', 'damage_dealt', 'damage_taken', 'healing'];
+
+const emptyRow = () => ({
+  rank: '', weapon_1: '', weapon_2: '', guild_name: '', player_name: '',
+  team_color: '', kills: 0, assists: 0, damage_dealt: 0, damage_taken: 0, healing: 0,
+});
+
+export default function Admin() {
+  const { user } = useAuth();
+
+  const [file, setFile] = useState(null);
+  const [title, setTitle] = useState('');
+  const [matchDate, setMatchDate] = useState('');
+  const [players, setPlayers] = useState(null);
+  const [warnings, setWarnings] = useState([]);
+  const [parsing, setParsing] = useState(false);
+  const [committing, setCommitting] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(null);
+
+  if (!user?.isAdmin) {
+    return (
+      <div className="max-w-2xl mx-auto px-6 py-24 text-center">
+        <Sigil className="w-12 h-16 text-oxblood mx-auto mb-6" />
+        <h1 className="font-display text-2xl text-bone tracking-[0.08em] mb-3">Restricted</h1>
+        <p className="text-ash">The war table is open to officers of the house alone.</p>
+      </div>
+    );
+  }
+
+  const parse = async () => {
+    if (!file) return;
+    setParsing(true); setError(''); setDone(null);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await axios.post('/api/admin/match/parse', form);
+      setPlayers(res.data.players || []);
+      setWarnings(res.data.warnings || []);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not read that file.');
+      setPlayers(null);
+    } finally {
+      setParsing(false);
+    }
+  };
+
+  const updateCell = (i, key, value) => {
+    setPlayers((prev) => prev.map((p, idx) => (idx === i ? { ...p, [key]: value } : p)));
+  };
+  const addRow = () => setPlayers((prev) => [...(prev || []), emptyRow()]);
+  const removeRow = (i) => setPlayers((prev) => prev.filter((_, idx) => idx !== i));
+
+  const commit = async () => {
+    setCommitting(true); setError('');
+    try {
+      const res = await axios.post('/api/admin/match/commit', {
+        title, match_date: matchDate, players,
+      });
+      setDone(res.data);
+      setPlayers(null); setFile(null); setTitle(''); setMatchDate(''); setWarnings([]);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not save the match.');
+    } finally {
+      setCommitting(false);
+    }
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto px-6 py-12">
+      <div className="eyebrow text-brass text-[11px] mb-3">War Table</div>
+      <h1 className="font-display text-4xl md:text-5xl text-bone tracking-[0.08em]">Upload a Match</h1>
+      <p className="text-ash mt-2">Read a results screenshot or a CSV, review every row, then commit it to the record.</p>
+      <div className="rule-fade my-10" />
+
+      {done && (
+        <div className="mb-8 panel rounded-sm p-6 border-brass/40">
+          <div className="font-display text-brassbright text-lg tracking-[0.06em] mb-1">Logged to the record</div>
+          <p className="text-ash">{done.inserted} players saved. <Link to="/war-record" className="text-brass hover:text-brassbright">View the war record →</Link></p>
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-8 px-5 py-4 border border-oxblood/50 bg-oxblooddeep/20 rounded-sm text-bone">{error}</div>
+      )}
+
+      {/* Step 1 — upload */}
+      {!players && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <label className="block panel rounded-sm border-dashed border-2 border-line hover:border-brass/50 transition-colors cursor-pointer p-10 text-center">
+              <input
+                type="file"
+                accept="image/*,.csv"
+                className="hidden"
+                onChange={(e) => { setFile(e.target.files?.[0] || null); setError(''); }}
+              />
+              <UploadCloud className="w-8 h-8 text-brass mx-auto mb-4" />
+              {file ? (
+                <div className="text-bone flex items-center justify-center gap-2">
+                  {/\.csv$/i.test(file.name) ? <FileSpreadsheet className="w-4 h-4 text-brass" /> : <ImageIcon className="w-4 h-4 text-brass" />}
+                  {file.name}
+                </div>
+              ) : (
+                <div className="text-ash">Click to choose a screenshot (PNG/JPG) or CSV</div>
+              )}
+            </label>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="eyebrow text-[10px] text-ash block mb-2">Match title</label>
+              <input
+                value={title} onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. Castle Siege — Abyssal"
+                className="w-full bg-panel border border-line rounded-sm px-4 py-2.5 text-bone focus:outline-none focus:border-brass"
+              />
+            </div>
+            <div>
+              <label className="eyebrow text-[10px] text-ash block mb-2">Match date</label>
+              <input
+                type="date" value={matchDate} onChange={(e) => setMatchDate(e.target.value)}
+                className="w-full bg-panel border border-line rounded-sm px-4 py-2.5 text-bone focus:outline-none focus:border-brass"
+              />
+            </div>
+            <button
+              onClick={parse}
+              disabled={!file || parsing}
+              className="w-full px-6 py-3 bg-brass hover:bg-brassbright text-ink font-semibold rounded-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {parsing ? 'Reading…' : 'Read file'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 2 — review & edit */}
+      {players && (
+        <div>
+          {warnings.length > 0 && (
+            <div className="mb-6 px-5 py-4 border border-brass/40 bg-panel rounded-sm text-sm text-bone">
+              <div className="eyebrow text-[10px] text-brass mb-2">Check before saving</div>
+              <ul className="list-disc pl-5 space-y-1 text-ash">
+                {warnings.map((w, i) => <li key={i}>{w}</li>)}
+              </ul>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-display text-2xl text-bone tracking-[0.08em]">Review — {players.length} players</h2>
+            <button onClick={addRow} className="inline-flex items-center gap-2 text-sm text-brass hover:text-brassbright">
+              <Plus className="w-4 h-4" /> Add row
+            </button>
+          </div>
+
+          <div className="panel rounded-sm overflow-auto max-h-[640px] mb-8">
+            <table className="w-full min-w-[1100px] text-sm">
+              <thead className="sticky top-0 bg-panelup border-b border-line">
+                <tr className="eyebrow text-[10px] text-ash">
+                  <th className="p-3 text-left font-normal w-16">Rank</th>
+                  <th className="p-3 text-left font-normal">Weapon 1</th>
+                  <th className="p-3 text-left font-normal">Weapon 2</th>
+                  <th className="p-3 text-left font-normal">Guild</th>
+                  <th className="p-3 text-left font-normal">Name</th>
+                  <th className="p-3 text-left font-normal">Team</th>
+                  <th className="p-3 text-left font-normal">Kills</th>
+                  <th className="p-3 text-left font-normal">Assists</th>
+                  <th className="p-3 text-left font-normal">Dmg Dealt</th>
+                  <th className="p-3 text-left font-normal">Dmg Taken</th>
+                  <th className="p-3 text-left font-normal">Healing</th>
+                  <th className="p-3 w-10"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {players.map((p, i) => (
+                  <tr key={i} className="border-b border-line/60">
+                    <td className="p-1.5"><NumCell value={p.rank} onChange={(v) => updateCell(i, 'rank', v)} w="w-14" /></td>
+                    <td className="p-1.5"><WeaponCell value={p.weapon_1} onChange={(v) => updateCell(i, 'weapon_1', v)} /></td>
+                    <td className="p-1.5"><WeaponCell value={p.weapon_2} onChange={(v) => updateCell(i, 'weapon_2', v)} /></td>
+                    <td className="p-1.5"><TextCell value={p.guild_name} onChange={(v) => updateCell(i, 'guild_name', v)} /></td>
+                    <td className="p-1.5"><TextCell value={p.player_name} onChange={(v) => updateCell(i, 'player_name', v)} /></td>
+                    <td className="p-1.5">
+                      <select
+                        value={p.team_color} onChange={(e) => updateCell(i, 'team_color', e.target.value)}
+                        className="bg-hall border border-line rounded px-2 py-1.5 text-bone focus:outline-none focus:border-brass w-24"
+                      >
+                        <option value="">—</option>
+                        <option value="Yellow">Yellow</option>
+                        <option value="Red">Red</option>
+                      </select>
+                    </td>
+                    {STAT_COLS.map((col) => (
+                      <td key={col} className="p-1.5"><NumCell value={p[col]} onChange={(v) => updateCell(i, col, v)} /></td>
+                    ))}
+                    <td className="p-1.5 text-center">
+                      <button onClick={() => removeRow(i)} className="text-ash hover:text-oxblood" aria-label="Remove row">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-4">
+            <button
+              onClick={commit}
+              disabled={committing || players.length === 0}
+              className="px-8 py-3 bg-brass hover:bg-brassbright text-ink font-semibold rounded-sm transition-colors disabled:opacity-40"
+            >
+              {committing ? 'Saving…' : `Commit ${players.length} players`}
+            </button>
+            <button
+              onClick={() => { setPlayers(null); setWarnings([]); }}
+              className="px-6 py-3 text-ash hover:text-bone transition-colors"
+            >
+              Discard
+            </button>
+            <span className="text-sm text-ash">
+              {title || 'Untitled match'}{matchDate ? ` · ${matchDate}` : ''}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TextCell({ value, onChange }) {
+  return (
+    <input
+      value={value ?? ''} onChange={(e) => onChange(e.target.value)}
+      className="bg-hall border border-line rounded px-2 py-1.5 text-bone focus:outline-none focus:border-brass w-full min-w-[120px]"
+    />
+  );
+}
+
+function NumCell({ value, onChange, w = 'w-24' }) {
+  return (
+    <input
+      type="number" value={value ?? 0} onChange={(e) => onChange(e.target.value)}
+      className={`bg-hall border border-line rounded px-2 py-1.5 text-bone font-mono focus:outline-none focus:border-brass ${w}`}
+    />
+  );
+}
+
+function WeaponCell({ value, onChange }) {
+  const known = WEAPONS.includes(value);
+  return (
+    <select
+      value={known ? value : ''} onChange={(e) => onChange(e.target.value)}
+      className={`bg-hall border rounded px-2 py-1.5 focus:outline-none focus:border-brass w-28 ${known ? 'border-line text-bone' : 'border-oxblood/60 text-oxblood'}`}
+    >
+      <option value="">{known ? '' : (value || '—')}</option>
+      {WEAPONS.map((w) => <option key={w} value={w}>{w}</option>)}
+    </select>
+  );
+}
