@@ -56,11 +56,30 @@ module.exports = function createAdminRouter(supabase) {
   // ── Party member pool (Discord members with the member role) ────────────────
   router.get('/members', async (req, res) => {
     try {
-      res.json({ members: await listMembers() });
+      const members = await listMembers();
+      // Apply each member's saved default role, if any.
+      if (supabase) {
+        const { data } = await supabase.from('member_roles').select('discord_id, role');
+        const roleMap = {};
+        (data || []).forEach((r) => { roleMap[r.discord_id] = r.role; });
+        members.forEach((m) => { m.role = roleMap[m.id] || ''; });
+      }
+      res.json({ members });
     } catch (err) {
       console.error('Member list error:', err.response?.data?.message || err.message);
       res.status(502).json({ error: err.response?.data?.message || err.message });
     }
+  });
+
+  // ── Persist a member's role (sticks across rosters) ─────────────────────────
+  router.put('/member-roles', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    const { id, role } = req.body || {};
+    if (!id) return res.status(400).json({ error: 'Member id required.' });
+    const { error } = await supabase.from('member_roles')
+      .upsert({ discord_id: String(id), role: role || null, updated_at: new Date().toISOString() });
+    if (error) return res.status(500).json({ error: 'Failed to save role.' });
+    res.json({ ok: true });
   });
 
   // ── Roster CRUD ─────────────────────────────────────────────────────────────

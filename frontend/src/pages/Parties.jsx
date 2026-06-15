@@ -6,7 +6,7 @@ import {
 } from '@dnd-kit/core';
 import { useAuth } from '../auth';
 import Sigil from '../components/Sigil';
-import { Save, Trash2, Send, Plus, RefreshCw, Users } from 'lucide-react';
+import { Save, Trash2, Send, Plus, RefreshCw, Users, ChevronUp, ChevronDown } from 'lucide-react';
 
 const ROLES = ['Tank', 'DPS', 'Healer'];
 const ROLE_STYLE = {
@@ -53,7 +53,17 @@ export default function Parties() {
   const loadMembers = () => {
     setLoadingMembers(true); setMembersError('');
     axios.get('/api/admin/members')
-      .then((res) => setMembers(res.data.members || []))
+      .then((res) => {
+        const ms = res.data.members || [];
+        setMembers(ms);
+        // Seed each member's saved role without clobbering roles already set
+        // by a loaded roster.
+        setRoles((prev) => {
+          const seeded = {};
+          ms.forEach((m) => { if (m.role) seeded[m.id] = m.role; });
+          return { ...seeded, ...prev };
+        });
+      })
       .catch((err) => setMembersError(err.response?.data?.error || 'Could not load members.'))
       .finally(() => setLoadingMembers(false));
   };
@@ -95,7 +105,23 @@ export default function Parties() {
     });
   };
 
-  const setRole = (id, role) => setRoles((r) => ({ ...r, [id]: r[id] === role ? '' : role }));
+  const setRole = (id, role) =>
+    setRoles((r) => {
+      const next = r[id] === role ? '' : role;
+      axios.put('/api/admin/member-roles', { id, role: next }).catch(() => {}); // persist (best-effort)
+      return { ...r, [id]: next };
+    });
+
+  const moveInParty = (partyId, index, dir) =>
+    setParties((prev) => prev.map((p) => {
+      if (p.id !== partyId) return p;
+      const ids = [...p.memberIds];
+      const j = index + dir;
+      if (j < 0 || j >= ids.length) return p;
+      [ids[index], ids[j]] = [ids[j], ids[index]];
+      return { ...p, memberIds: ids };
+    }));
+
   const renameParty = (id, name) =>
     setParties((prev) => prev.map((p) => (p.id === id ? { ...p, name } : p)));
 
@@ -236,7 +262,7 @@ export default function Parties() {
                 ) : pool.length === 0 ? (
                   <div className="text-ash text-sm py-6 text-center">Everyone's assigned.</div>
                 ) : (
-                  pool.map((m) => <MemberCard key={m.id} member={m} role={roles[m.id]} />)
+                  pool.map((m) => <MemberCard key={m.id} member={m} role={roles[m.id]} onRole={setRole} />)
                 )}
               </div>
             </div>
@@ -247,7 +273,7 @@ export default function Parties() {
             {parties.map((p) => (
               <PartyCard
                 key={p.id} party={p} byId={byId} roles={roles}
-                onRename={renameParty} onRole={setRole}
+                onRename={renameParty} onRole={setRole} onMove={moveInParty}
               />
             ))}
           </div>
@@ -266,7 +292,7 @@ function Droppable({ id, children }) {
   return <div ref={setNodeRef} className={isOver ? 'ring-1 ring-brass/60 rounded-sm' : ''}>{children}</div>;
 }
 
-function PartyCard({ party, byId, roles, onRename, onRole }) {
+function PartyCard({ party, byId, roles, onRename, onRole, onMove }) {
   const { setNodeRef, isOver } = useDroppable({ id: party.id });
   const full = party.memberIds.length >= PARTY_SIZE;
   return (
@@ -282,8 +308,12 @@ function PartyCard({ party, byId, roles, onRename, onRole }) {
         {party.memberIds.length === 0 ? (
           <div className="text-ash/50 text-xs text-center py-8 border border-dashed border-line rounded">Drop members here</div>
         ) : (
-          party.memberIds.map((id) => (
-            <MemberCard key={id} member={byId[id] || { id, name: 'Unknown' }} role={roles[id]} onRole={onRole} inParty />
+          party.memberIds.map((id, i) => (
+            <MemberCard
+              key={id} member={byId[id] || { id, name: 'Unknown' }} role={roles[id]} onRole={onRole} inParty
+              onMoveUp={i > 0 ? () => onMove(party.id, i, -1) : null}
+              onMoveDown={i < party.memberIds.length - 1 ? () => onMove(party.id, i, 1) : null}
+            />
           ))
         )}
       </div>
@@ -291,7 +321,7 @@ function PartyCard({ party, byId, roles, onRename, onRole }) {
   );
 }
 
-function MemberCard({ member, role, onRole, inParty, overlay }) {
+function MemberCard({ member, role, onRole, inParty, overlay, onMoveUp, onMoveDown }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: member.id });
   const rs = ROLE_STYLE[role];
   return (
@@ -305,7 +335,15 @@ function MemberCard({ member, role, onRole, inParty, overlay }) {
       <span className={`text-sm truncate flex-1 ${member.missing ? 'text-ash italic' : 'text-bone'}`} title={member.missing ? 'No longer in the server' : member.name}>
         {member.name}
       </span>
+
       {inParty && (
+        <div className="flex flex-col -my-1 opacity-50 group-hover:opacity-100 transition-opacity" onPointerDown={(e) => e.stopPropagation()}>
+          <button onClick={onMoveUp} disabled={!onMoveUp} className="text-ash hover:text-brass disabled:opacity-20 disabled:hover:text-ash" aria-label="Move up"><ChevronUp className="w-3.5 h-3.5" /></button>
+          <button onClick={onMoveDown} disabled={!onMoveDown} className="text-ash hover:text-brass disabled:opacity-20 disabled:hover:text-ash" aria-label="Move down"><ChevronDown className="w-3.5 h-3.5" /></button>
+        </div>
+      )}
+
+      {onRole && (
         <div className="flex gap-1 opacity-60 group-hover:opacity-100 transition-opacity" onPointerDown={(e) => e.stopPropagation()}>
           {ROLES.map((r) => (
             <button
