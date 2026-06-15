@@ -57,7 +57,9 @@ router.get('/login', (req, res) => {
 });
 
 // ── OAuth callback: verify, check role, issue session ───────────────────────
-router.get('/callback', async (req, res) => {
+// Full path: /api/auth/discord/callback — must match DISCORD_REDIRECT_URI and
+// the redirect registered in the Discord developer portal.
+router.get('/discord/callback', async (req, res) => {
   if (!authConfigured) return res.status(503).send('Discord login is not configured.');
 
   const { code, state } = req.query;
