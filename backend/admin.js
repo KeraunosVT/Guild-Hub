@@ -2,7 +2,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const multer = require('multer');
-const { parseScreenshot, parseCsv } = require('./ingest');
+const { parseScreenshot, parseCsv, WEAPONS } = require('./ingest');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -32,25 +32,58 @@ module.exports = function createAdminRouter(supabase) {
     res.json({ admin: true, username: req.user.username });
   });
 
-  // ── Parse an upload into draft rows (no DB writes) ──────────────────────────
-  router.post('/match/parse', upload.single('file'), async (req, res) => {
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
-    const { originalname, mimetype, buffer } = req.file;
+  // ── Parse one or more uploads into merged draft rows (no DB writes) ─────────
+  router.post('/match/parse', upload.array('files', 20), async (req, res) => {
+    const files = req.files || [];
+    if (files.length === 0) return res.status(400).json({ error: 'No files uploaded.' });
 
-    try {
-      let result;
-      if (mimetype.startsWith('image/')) {
-        result = await parseScreenshot(buffer, mimetype);
-      } else if (mimetype === 'text/csv' || /\.csv$/i.test(originalname)) {
-        result = parseCsv(buffer.toString('utf8'));
-      } else {
-        return res.status(400).json({ error: 'Upload a PNG/JPG screenshot or a CSV file.' });
+    // Parse every file (images via Gemini in parallel, CSVs directly).
+    const results = await Promise.all(files.map(async (f) => {
+      try {
+        if (f.mimetype.startsWith('image/')) {
+          const r = await parseScreenshot(f.buffer, f.mimetype);
+          return { players: r.players };
+        }
+        if (f.mimetype === 'text/csv' || /\.csv$/i.test(f.originalname)) {
+          const r = parseCsv(f.buffer.toString('utf8'));
+          return { players: r.players };
+        }
+        return { players: [], error: `${f.originalname}: unsupported type, skipped.` };
+      } catch (err) {
+        return { players: [], error: `${f.originalname}: ${err.message}` };
       }
-      res.json(result);
-    } catch (err) {
-      console.error('Parse error:', err.message);
-      res.status(502).json({ error: err.message || 'Could not read the upload.' });
+    }));
+
+    const warnings = [];
+    const all = [];
+    for (const r of results) {
+      if (r.error) warnings.push(r.error);
+      all.push(...r.players);
     }
+
+    // Merge: de-duplicate by player name (consistent across overlapping shots),
+    // falling back to rank, then sort by rank.
+    const seen = new Map();
+    let duplicates = 0;
+    for (const p of all) {
+      const key = p.player_name ? `n:${p.player_name.toLowerCase()}` : `r:${p.rank}`;
+      if (seen.has(key)) { duplicates++; continue; }
+      seen.set(key, p);
+    }
+    const players = [...seen.values()].sort((a, b) => (a.rank || 9999) - (b.rank || 9999));
+
+    // Recompute data-quality warnings on the merged set.
+    if (files.length > 1) warnings.unshift(`Merged ${files.length} files into ${players.length} players${duplicates ? `, ${duplicates} duplicate row(s) removed` : ''}.`);
+    if (players.length === 0) {
+      warnings.push('No player rows were detected — check the files and try again.');
+    } else {
+      const missingTeam = players.filter((p) => !p.team_color).length;
+      if (missingTeam) warnings.push(`${missingTeam} row(s) have no team color set.`);
+      const badWeapon = players.filter((p) => !WEAPONS.includes(p.weapon_1) || !WEAPONS.includes(p.weapon_2)).length;
+      if (badWeapon) warnings.push(`${badWeapon} row(s) have a class to confirm.`);
+    }
+
+    res.json({ players, warnings });
   });
 
   // ── Commit reviewed rows: create match + insert players ─────────────────────
