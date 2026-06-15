@@ -6,6 +6,7 @@ import Sigil from './components/Sigil';
 import Home from './pages/Home';
 import MatchStats from './pages/MatchStats';
 import Login from './pages/Login';
+import Admin from './pages/Admin';
 
 function Layout() {
   return (
@@ -40,6 +41,7 @@ function Gate() {
         <Route element={<Layout />}>
           <Route path="/" element={<Home />} />
           <Route path="/war-record" element={<MatchStats />} />
+          <Route path="/admin" element={<Admin />} />
           {/* Legacy aliases kept so old links still resolve */}
           <Route path="/dashboard" element={<MatchStats />} />
           <Route path="/match-stats" element={<MatchStats />} />

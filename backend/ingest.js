@@ -1,86 +1,139 @@
 // backend/ingest.js — turn a screenshot or CSV into draft player rows.
-// Screenshots go through Gemini vision; CSVs are parsed directly. Both produce
-// the same row shape, which the admin reviews and edits before committing.
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+// Screenshots go through Gemini vision (with an optional weapon legend as a
+// reference image); CSVs are parsed directly. Both produce the same row shape,
+// which the admin reviews and edits before committing.
+const { GoogleGenAI, Type } = require('@google/genai');
 const Papa = require('papaparse');
+const fs = require('fs');
+const path = require('path');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 // Model names churn — keep this swappable without a code change.
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// Optional reference legend image sent as image 1 on every screenshot read.
+const LEGEND_PATH = process.env.WEAPON_LEGEND_PATH || path.join(__dirname, 'assets', 'weapon-legend.png');
 
-// The exact weapon tokens our class map understands. Gemini must choose from
-// these so weapon_1 + weapon_2 resolve to a class downstream.
+// The exact weapon tokens our class map understands ("Unknown" is allowed when
+// the icon can't be identified, and gets flagged for review).
 const WEAPONS = ['SnS', 'Greatsword', 'Daggers', 'Crossbow', 'Longbow', 'Staff', 'Wand', 'Spear', 'Orb'];
 
-const PROMPT = `You are reading a Throne and Liberty wargame results screen. Extract EVERY player row into JSON.
-
-Return ONLY a JSON object of this exact shape:
-{
-  "players": [
-    {
-      "rank": <integer>,
-      "weapon_1": <one of: ${WEAPONS.join(', ')}>,
-      "weapon_2": <one of the same list>,
-      "guild_name": <string>,
-      "player_name": <string, keep non-Latin characters exactly>,
-      "team_color": <"Red" or "Yellow">,
-      "kills": <integer>,
-      "assists": <integer>,
-      "damage_dealt": <integer>,
-      "damage_taken": <integer>,
-      "healing": <integer>
-    }
-  ]
+// ── Legend image (cached) ────────────────────────────────────────────────────
+let _legendPart; // undefined = not checked, null = absent
+function getLegendPart() {
+  if (_legendPart !== undefined) return _legendPart;
+  try {
+    const data = fs.readFileSync(LEGEND_PATH);
+    const ext = path.extname(LEGEND_PATH).toLowerCase();
+    const mimeType = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'image/png';
+    _legendPart = { inlineData: { mimeType, data: data.toString('base64') } };
+  } catch {
+    _legendPart = null;
+  }
+  return _legendPart;
 }
 
-Column mapping on the screen:
+function buildPrompt(hasLegend) {
+  return `You will receive ${
+    hasLegend
+      ? 'two images. Image 1 is a REFERENCE LEGEND showing weapon icons and their exact names. Image 2 is a Throne and Liberty wargame scoreboard screenshot.'
+      : 'one image: a Throne and Liberty wargame scoreboard screenshot.'
+  }
+
+COLUMN MAPPING (left to right on the scoreboard):
 - "Ranking" -> rank
-- The two weapon icons -> weapon_1 (left) and weapon_2 (right). Identify each from the list above by its icon: SnS = sword + shield, Greatsword = large two-handed sword, Daggers = twin short blades, Crossbow = paired crossbows, Longbow = bow, Staff = mage staff, Wand = wand + tome/book, Spear = polearm, Orb = sphere. If unsure, give your best guess.
-- "Guild" -> guild_name (the text only; ignore the emblem)
-- "Name" -> player_name
-- "Team" -> team_color
+- the two weapon icons -> weapon1 (LEFT icon) and weapon2 (RIGHT icon)
+- "Guild" -> guildname (the text only; ignore the emblem)
+- "Name" -> playername (keep non-Latin characters exactly)
+- "Team" -> teamcolor ("Yellow" or "Red")
 - "Defeat" -> kills
 - "Assist" -> assists
-- "Damage Dealt" -> damage_dealt
-- "Damage Taken" -> damage_taken
+- "Damage Dealt" -> damagedealt
+- "Damage Taken" -> damagetaken
 - "Amount Healed" -> healing
 
-Rules:
-- IGNORE the pinned "My Rank" row at the very top — it is a duplicate of that player's own ranked line and must NOT be included.
-- Strip thousands separators: "3,254,684" becomes 3254684.
-- If a number is blank or unreadable, use 0.
-- Return players in ranking order. Output JSON only, no prose.`;
+WEAPON POSITION RULES:
+- Weapons appear as TWO small icons side by side HORIZONTALLY in the second column.
+- LEFT icon = weapon1, RIGHT icon = weapon2. Do NOT read them as stacked or vertical.
+
+CRITICAL WEAPON IDENTIFICATION RULES:
+- Greatsword: a tall single straight blade with a wide crossguard and NO shield. This is the most common weapon — when you see a single sword shape, it is almost always Greatsword.
+- SnS: ALWAYS has a visible shield (round or rectangular) with a sword behind or beside it. If there is NO shield present, it is NOT SnS.
+- Daggers: two short blades crossed in an X shape.
+- Longbow: two diagonal lines forming a narrow arc shape (the bow + string side by side).
+- Spear: a single long pole with a pointed trident tip at the top.
+- Crossbow: a horizontal bow mounted on a vertical stock, forming a cross/T shape.
+- Staff: a single tall straight rod with a small ornament at the top.
+- Wand: a DARK SQUARE icon showing a tall rectangular tome/book standing upright, with a thin wand rod leaning against or attached to it. The tome is the dominant shape — it looks like a book standing on its side. NOT a shield.
+- DO NOT default to SnS when uncertain — Greatsword is far more likely for any single sword icon.
+- DO NOT confuse Wand and Longbow — Longbow has two lines, Wand has a rod attached to a tome.
+- DO NOT confuse Spear and Daggers — Spear is a single long pole, Daggers are two crossed short blades.
+${hasLegend ? '- Compare each scoreboard icon against the legend in Image 1 before deciding.\n' : ''}- If still uncertain about a weapon, use "Unknown" rather than guessing.
+- The ONLY valid weapon names are: Wand, Longbow, Orb, Greatsword, Spear, Daggers, Crossbow, SnS, Staff, Unknown.
+
+OTHER RULES:
+- EXCLUDE the pinned "My Rank" summary row at the very top of the board — it duplicates that player's own ranked line and must NOT appear in the output.
+- All stat values are integers with no thousands separators: "3,254,684" becomes 3254684.
+- If a value is blank or unreadable, use 0.
+- Return rows in ranking order.
+
+Extract every remaining row into a JSON array of objects with these exact keys:
+rank, weapon1, weapon2, guildname, playername, teamcolor, kills, assists, damagedealt, damagetaken, healing.
+Return ONLY the JSON array, no markdown, no explanation.`;
+}
+
+// Schema guarantees the model returns a well-formed array of rows.
+const RESPONSE_SCHEMA = {
+  type: Type.ARRAY,
+  items: {
+    type: Type.OBJECT,
+    properties: {
+      rank: { type: Type.NUMBER },
+      weapon1: { type: Type.STRING },
+      weapon2: { type: Type.STRING },
+      guildname: { type: Type.STRING },
+      playername: { type: Type.STRING },
+      teamcolor: { type: Type.STRING },
+      kills: { type: Type.NUMBER },
+      assists: { type: Type.NUMBER },
+      damagedealt: { type: Type.NUMBER },
+      damagetaken: { type: Type.NUMBER },
+      healing: { type: Type.NUMBER },
+    },
+    required: ['rank', 'weapon1', 'weapon2', 'guildname', 'playername', 'teamcolor', 'kills', 'assists', 'damagedealt', 'damagetaken', 'healing'],
+  },
+};
 
 async function parseScreenshot(buffer, mimeType) {
   if (!GEMINI_API_KEY) {
     throw new Error('GEMINI_API_KEY is not set — screenshot reading is unavailable.');
   }
 
-  const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({
+  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+  const legend = getLegendPart();
+
+  const parts = [{ text: buildPrompt(!!legend) }];
+  if (legend) parts.push(legend);
+  parts.push({ inlineData: { mimeType, data: buffer.toString('base64') } });
+
+  const response = await ai.models.generateContent({
     model: GEMINI_MODEL,
-    generationConfig: { responseMimeType: 'application/json', temperature: 0 },
+    contents: [{ role: 'user', parts }],
+    config: { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA, temperature: 0 },
   });
 
-  const result = await model.generateContent([
-    { text: PROMPT },
-    { inlineData: { mimeType, data: buffer.toString('base64') } },
-  ]);
-
-  const text = result.response.text();
   let parsed;
   try {
-    parsed = JSON.parse(text);
+    parsed = JSON.parse(response.text);
   } catch {
     throw new Error('Gemini did not return valid JSON. Try a clearer screenshot.');
   }
 
-  const players = Array.isArray(parsed.players) ? parsed.players.map(normalizeRow) : [];
-  return { players, warnings: buildWarnings(players, 'screenshot') };
+  const arr = Array.isArray(parsed) ? parsed : Array.isArray(parsed.players) ? parsed.players : [];
+  const players = arr.map(normalizeRow);
+  return { players, warnings: buildWarnings(players, 'screenshot'), usedLegend: !!legend };
 }
 
 // ── CSV ──────────────────────────────────────────────────────────────────────
-// Accept either the in-game column names or our field names (case-insensitive).
 const HEADER_MAP = {
   ranking: 'rank', rank: 'rank',
   weapon_1: 'weapon_1', weapon1: 'weapon_1', 'weapon 1': 'weapon_1',
@@ -102,23 +155,19 @@ function parseCsv(text) {
     transformHeader: (h) => HEADER_MAP[h.trim().toLowerCase()] || h.trim().toLowerCase(),
   });
 
+  const fields = ['rank', 'weapon_1', 'weapon_2', 'guild_name', 'player_name', 'team_color', 'kills', 'assists', 'damage_dealt', 'damage_taken', 'healing'];
   const players = (out.data || [])
     .map((raw) => {
       const row = {};
-      for (const key of Object.keys(raw)) {
-        if (['rank','weapon_1','weapon_2','guild_name','player_name','team_color','kills','assists','damage_dealt','damage_taken','healing'].includes(key)) {
-          row[key] = raw[key];
-        }
-      }
+      for (const key of Object.keys(raw)) if (fields.includes(key)) row[key] = raw[key];
       return normalizeRow(row);
     })
-    // Drop fully empty rows and any leftover "My Rank" lines
     .filter((p) => p.player_name && !/^my\s*rank$/i.test(p.player_name));
 
   return { players, warnings: buildWarnings(players, 'csv') };
 }
 
-// ── shared normalization ─────────────────────────────────────────────────────
+// ── shared normalization (tolerant of both key styles) ───────────────────────
 function toInt(v) {
   if (v === null || v === undefined) return 0;
   const n = parseInt(String(v).replace(/[, ]/g, ''), 10);
@@ -135,22 +184,27 @@ function normalizeTeam(v) {
 function cleanWeapon(v) {
   const s = String(v || '').trim();
   const match = WEAPONS.find((w) => w.toLowerCase() === s.toLowerCase());
-  return match || s; // keep the raw value if it isn't a known token, so the admin can fix it
+  return match || s; // keep raw (e.g. "Unknown") so the admin can fix it
+}
+
+function pick(...vals) {
+  for (const v of vals) if (v !== undefined && v !== null) return v;
+  return undefined;
 }
 
 function normalizeRow(r = {}) {
   return {
-    rank: toInt(r.rank),
-    weapon_1: cleanWeapon(r.weapon_1),
-    weapon_2: cleanWeapon(r.weapon_2),
-    guild_name: String(r.guild_name || '').trim(),
-    player_name: String(r.player_name || '').trim(),
-    team_color: normalizeTeam(r.team_color),
-    kills: toInt(r.kills),
-    assists: toInt(r.assists),
-    damage_dealt: toInt(r.damage_dealt),
-    damage_taken: toInt(r.damage_taken),
-    healing: toInt(r.healing),
+    rank: toInt(pick(r.rank)),
+    weapon_1: cleanWeapon(pick(r.weapon1, r.weapon_1)),
+    weapon_2: cleanWeapon(pick(r.weapon2, r.weapon_2)),
+    guild_name: String(pick(r.guildname, r.guild_name) || '').trim(),
+    player_name: String(pick(r.playername, r.player_name) || '').trim(),
+    team_color: normalizeTeam(pick(r.teamcolor, r.team_color)),
+    kills: toInt(pick(r.kills)),
+    assists: toInt(pick(r.assists)),
+    damage_dealt: toInt(pick(r.damagedealt, r.damage_dealt)),
+    damage_taken: toInt(pick(r.damagetaken, r.damage_taken)),
+    healing: toInt(pick(r.healing)),
   };
 }
 
@@ -164,7 +218,7 @@ function buildWarnings(players, source) {
   if (missingTeam) warnings.push(`${missingTeam} row(s) have no team color set.`);
   const badWeapon = players.filter((p) => !WEAPONS.includes(p.weapon_1) || !WEAPONS.includes(p.weapon_2)).length;
   if (badWeapon && source === 'screenshot') {
-    warnings.push(`${badWeapon} row(s) have a weapon that needs checking — icons are the least reliable field.`);
+    warnings.push(`${badWeapon} row(s) have a weapon to confirm — icons are the least reliable field.`);
   }
   return warnings;
 }

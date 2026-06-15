@@ -22,6 +22,10 @@ const {
 // guild is allowed (membership alone gates access).
 const ALLOWED_ROLES = DISCORD_ALLOWED_ROLE_IDS.split(',').map(s => s.trim()).filter(Boolean);
 
+// Admin role IDs — a tighter check for the admin area. Empty list = nobody is an
+// admin until configured (fails closed).
+const ADMIN_ROLES = (process.env.DISCORD_ADMIN_ROLE_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
+
 const COOKIE_NAME = 'gh_session';
 const STATE_COOKIE = 'gh_oauth_state';
 const SESSION_DAYS = 7;
@@ -112,10 +116,12 @@ router.get('/discord/callback', async (req, res) => {
 
     // 4. Issue a signed session cookie
     const u = member.user || {};
+    const isAdmin = ADMIN_ROLES.length > 0 && roles.some((r) => ADMIN_ROLES.includes(r));
     const sessionUser = {
       id: u.id,
       username: u.global_name || u.username || 'Member',
       avatar: u.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png` : null,
+      isAdmin,
     };
     const sessionToken = jwt.sign(sessionUser, JWT_SECRET, { expiresIn: `${SESSION_DAYS}d` });
     res.cookie(COOKIE_NAME, sessionToken, { ...baseCookie, maxAge: SESSION_DAYS * 86400 * 1000 });
@@ -133,7 +139,7 @@ router.get('/me', (req, res) => {
   if (!authConfigured || !token) return res.status(401).json({ authenticated: false });
   try {
     const user = jwt.verify(token, JWT_SECRET);
-    res.json({ authenticated: true, user: { id: user.id, username: user.username, avatar: user.avatar } });
+    res.json({ authenticated: true, user: { id: user.id, username: user.username, avatar: user.avatar, isAdmin: !!user.isAdmin } });
   } catch {
     res.status(401).json({ authenticated: false });
   }
@@ -159,4 +165,12 @@ function requireAuth(req, res, next) {
   }
 }
 
-module.exports = { router, requireAuth };
+// Stricter gate for the admin area: a valid session AND the admin flag.
+function requireAdmin(req, res, next) {
+  requireAuth(req, res, () => {
+    if (req.user?.isAdmin) return next();
+    return res.status(403).json({ error: 'Admin access required' });
+  });
+}
+
+module.exports = { router, requireAuth, requireAdmin };

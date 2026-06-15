@@ -4,13 +4,14 @@ import Sigil from './Sigil';
 import { GUILD } from '../guild';
 import { useAuth } from '../auth';
 
-const links = [
-  { to: '/', label: 'The Hall', end: true },
-  { to: '/war-record', label: 'War Record' },
-];
-
 export default function Masthead() {
   const { user, logout } = useAuth();
+
+  const links = [
+    { to: '/', label: 'The Hall', end: true },
+    { to: '/war-record', label: 'War Record' },
+    ...(user?.isAdmin ? [{ to: '/admin', label: 'Admin' }] : []),
+  ];
 
   return (
     <header className="sticky top-0 z-50 border-b border-line bg-ink/85 backdrop-blur-md">
