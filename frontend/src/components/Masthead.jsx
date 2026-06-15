@@ -10,7 +10,7 @@ export default function Masthead() {
   const links = [
     { to: '/', label: 'The Hall', end: true },
     { to: '/war-record', label: 'War Record' },
-    ...(user?.isAdmin ? [{ to: '/admin', label: 'Admin' }] : []),
+    ...(user?.isAdmin ? [{ to: '/admin', label: 'Admin' }, { to: '/admin/parties', label: 'Parties' }] : []),
   ];
 
   return (

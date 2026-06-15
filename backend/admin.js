@@ -3,6 +3,27 @@ const express = require('express');
 const crypto = require('crypto');
 const multer = require('multer');
 const { parseScreenshot, parseCsv, WEAPONS } = require('./ingest');
+const { listMembers, postEmbed } = require('./discord');
+
+const ROLE_EMOJI = { Tank: '🛡️', DPS: '⚔️', Healer: '💚' };
+
+// Build a Discord embed from a roster layout.
+function rosterEmbed(name, parties) {
+  const fields = (parties || [])
+    .filter((p) => (p.members || []).length > 0)
+    .map((p) => ({
+      name: (p.name || 'Party').slice(0, 256),
+      value: (p.members.map((m) => `${ROLE_EMOJI[m.role] || '•'} ${m.name}`).join('\n') || '—').slice(0, 1024),
+      inline: true,
+    }));
+  return {
+    title: (name || 'Roster').slice(0, 256),
+    color: 0xc9973a,
+    fields: fields.length ? fields : [{ name: 'Empty', value: 'No members assigned.' }],
+    footer: { text: 'House Regard' },
+    timestamp: new Date().toISOString(),
+  };
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -30,6 +51,75 @@ module.exports = function createAdminRouter(supabase) {
 
   router.get('/whoami', (req, res) => {
     res.json({ admin: true, username: req.user.username });
+  });
+
+  // ── Party member pool (Discord members with the member role) ────────────────
+  router.get('/members', async (req, res) => {
+    try {
+      res.json({ members: await listMembers() });
+    } catch (err) {
+      console.error('Member list error:', err.response?.data?.message || err.message);
+      res.status(502).json({ error: err.response?.data?.message || err.message });
+    }
+  });
+
+  // ── Roster CRUD ─────────────────────────────────────────────────────────────
+  router.get('/rosters', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    const { data, error } = await supabase
+      .from('rosters').select('id, name, updated_at').order('updated_at', { ascending: false });
+    if (error) return res.status(500).json({ error: 'Failed to load rosters.' });
+    res.json({ rosters: data || [] });
+  });
+
+  router.get('/rosters/:id', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    const { data, error } = await supabase
+      .from('rosters').select('*').eq('id', req.params.id).single();
+    if (error) return res.status(404).json({ error: 'Roster not found.' });
+    res.json({ roster: data });
+  });
+
+  router.post('/rosters', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    const { name, layout } = req.body || {};
+    if (!name || !layout) return res.status(400).json({ error: 'Name and layout are required.' });
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const { error } = await supabase.from('rosters')
+      .insert({ id, name: String(name).slice(0, 120), layout, created_at: now, updated_at: now });
+    if (error) return res.status(500).json({ error: 'Failed to save roster.' });
+    res.json({ id });
+  });
+
+  router.put('/rosters/:id', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    const { name, layout } = req.body || {};
+    const { error } = await supabase.from('rosters')
+      .update({ name: String(name || '').slice(0, 120), layout, updated_at: new Date().toISOString() })
+      .eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: 'Failed to update roster.' });
+    res.json({ ok: true });
+  });
+
+  router.delete('/rosters/:id', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    const { error } = await supabase.from('rosters').delete().eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: 'Failed to delete roster.' });
+    res.json({ ok: true });
+  });
+
+  // ── Post a roster to Discord ────────────────────────────────────────────────
+  router.post('/rosters/post', async (req, res) => {
+    const { name, parties } = req.body || {};
+    if (!Array.isArray(parties)) return res.status(400).json({ error: 'Nothing to post.' });
+    try {
+      await postEmbed(rosterEmbed(name, parties));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('Discord post error:', err.response?.data?.message || err.message);
+      res.status(502).json({ error: err.response?.data?.message || err.message });
+    }
   });
 
   // ── Parse one or more uploads into merged draft rows (no DB writes) ─────────

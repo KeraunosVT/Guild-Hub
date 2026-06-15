@@ -7,6 +7,7 @@ import Home from './pages/Home';
 import MatchStats from './pages/MatchStats';
 import Login from './pages/Login';
 import Admin from './pages/Admin';
+import Parties from './pages/Parties';
 
 function Layout() {
   return (
@@ -42,6 +43,7 @@ function Gate() {
           <Route path="/" element={<Home />} />
           <Route path="/war-record" element={<MatchStats />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/admin/parties" element={<Parties />} />
           {/* Legacy aliases kept so old links still resolve */}
           <Route path="/dashboard" element={<MatchStats />} />
           <Route path="/match-stats" element={<MatchStats />} />

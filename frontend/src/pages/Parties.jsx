@@ -1,0 +1,322 @@
+import { useState, useEffect, useMemo } from 'react';
+import axios from 'axios';
+import {
+  DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
+  useDraggable, useDroppable, closestCorners,
+} from '@dnd-kit/core';
+import { useAuth } from '../auth';
+import Sigil from '../components/Sigil';
+import { Save, Trash2, Send, Plus, RefreshCw, Users } from 'lucide-react';
+
+const ROLES = ['Tank', 'DPS', 'Healer'];
+const ROLE_STYLE = {
+  Tank:   { dot: 'bg-sky-400',     ring: 'border-l-sky-400',     text: 'text-sky-300' },
+  DPS:    { dot: 'bg-oxblood',     ring: 'border-l-oxblood',     text: 'text-oxblood' },
+  Healer: { dot: 'bg-emerald-400', ring: 'border-l-emerald-400', text: 'text-emerald-300' },
+};
+const PARTY_SIZE = 6;
+const initParties = () =>
+  Array.from({ length: 12 }, (_, i) => ({ id: `p${i + 1}`, name: `Party ${i + 1}`, memberIds: [] }));
+
+export default function Parties() {
+  const { user } = useAuth();
+
+  const [members, setMembers] = useState([]);
+  const [extra, setExtra] = useState({});            // departed members kept from a saved roster
+  const [parties, setParties] = useState(initParties);
+  const [roles, setRoles] = useState({});            // memberId -> role
+  const [saved, setSaved] = useState([]);
+  const [rosterId, setRosterId] = useState(null);
+  const [rosterName, setRosterName] = useState('');
+  const [filter, setFilter] = useState('');
+  const [activeId, setActiveId] = useState(null);
+  const [loadingMembers, setLoadingMembers] = useState(true);
+  const [membersError, setMembersError] = useState('');
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  const byId = useMemo(() => {
+    const m = {};
+    members.forEach((x) => { m[x.id] = x; });
+    Object.values(extra).forEach((x) => { if (!m[x.id]) m[x.id] = x; });
+    return m;
+  }, [members, extra]);
+
+  const assigned = useMemo(() => new Set(parties.flatMap((p) => p.memberIds)), [parties]);
+  const pool = useMemo(
+    () => members.filter((m) => !assigned.has(m.id) && m.name.toLowerCase().includes(filter.toLowerCase())),
+    [members, assigned, filter]
+  );
+
+  const loadMembers = () => {
+    setLoadingMembers(true); setMembersError('');
+    axios.get('/api/admin/members')
+      .then((res) => setMembers(res.data.members || []))
+      .catch((err) => setMembersError(err.response?.data?.error || 'Could not load members.'))
+      .finally(() => setLoadingMembers(false));
+  };
+  const loadSaved = () => {
+    axios.get('/api/admin/rosters').then((res) => setSaved(res.data.rosters || [])).catch(() => {});
+  };
+
+  useEffect(() => { loadMembers(); loadSaved(); }, []);
+
+  if (!user?.isAdmin) {
+    return (
+      <div className="max-w-2xl mx-auto px-6 py-24 text-center">
+        <Sigil className="w-12 h-16 text-oxblood mx-auto mb-6" />
+        <h1 className="font-display text-2xl text-bone tracking-[0.08em] mb-3">Restricted</h1>
+        <p className="text-ash">The war table is open to officers of the house alone.</p>
+      </div>
+    );
+  }
+
+  const flash = (text, ok = true) => { setMsg({ text, ok }); setTimeout(() => setMsg(null), 4000); };
+
+  const onDragEnd = ({ active, over }) => {
+    setActiveId(null);
+    if (!over) return;
+    const memberId = active.id;
+    const target = over.id;
+    setParties((prev) => {
+      const next = prev.map((p) => ({ ...p, memberIds: [...p.memberIds] }));
+      const src = next.find((p) => p.memberIds.includes(memberId));
+      const srcId = src ? src.id : 'pool';
+      if (srcId === target) return prev;
+      if (src) src.memberIds = src.memberIds.filter((id) => id !== memberId);
+      if (target !== 'pool') {
+        const tgt = next.find((p) => p.id === target);
+        if (!tgt || tgt.memberIds.length >= PARTY_SIZE) return prev;
+        tgt.memberIds.push(memberId);
+      }
+      return next;
+    });
+  };
+
+  const setRole = (id, role) => setRoles((r) => ({ ...r, [id]: r[id] === role ? '' : role }));
+  const renameParty = (id, name) =>
+    setParties((prev) => prev.map((p) => (p.id === id ? { ...p, name } : p)));
+
+  const buildPayloadParties = () =>
+    parties.map((p) => ({
+      id: p.id,
+      name: p.name,
+      members: p.memberIds.map((id) => ({ id, name: byId[id]?.name || 'Unknown', role: roles[id] || '' })),
+    }));
+
+  const resetBoard = () => {
+    setParties(initParties()); setRoles({}); setRosterId(null); setRosterName(''); setExtra({});
+  };
+
+  const save = async () => {
+    if (!rosterName.trim()) return flash('Name the roster first.', false);
+    setBusy(true);
+    const layout = { parties: buildPayloadParties() };
+    try {
+      if (rosterId) {
+        await axios.put(`/api/admin/rosters/${rosterId}`, { name: rosterName, layout });
+      } else {
+        const res = await axios.post('/api/admin/rosters', { name: rosterName, layout });
+        setRosterId(res.data.id);
+      }
+      loadSaved(); flash('Roster saved.');
+    } catch (err) { flash(err.response?.data?.error || 'Save failed.', false); }
+    finally { setBusy(false); }
+  };
+
+  const load = async (id) => {
+    if (!id) return;
+    try {
+      const res = await axios.get(`/api/admin/rosters/${id}`);
+      const r = res.data.roster;
+      const layoutParties = r.layout?.parties || [];
+      const nextParties = initParties();
+      const nextRoles = {};
+      const nextExtra = {};
+      layoutParties.forEach((lp) => {
+        const slot = nextParties.find((p) => p.id === lp.id) || nextParties.find((p) => p.memberIds.length === 0);
+        if (!slot) return;
+        slot.name = lp.name || slot.name;
+        (lp.members || []).forEach((m) => {
+          slot.memberIds.push(m.id);
+          if (m.role) nextRoles[m.id] = m.role;
+          if (!members.find((x) => x.id === m.id)) nextExtra[m.id] = { id: m.id, name: m.name, missing: true };
+        });
+      });
+      setParties(nextParties); setRoles(nextRoles); setExtra(nextExtra);
+      setRosterId(r.id); setRosterName(r.name);
+      flash(`Loaded "${r.name}".`);
+    } catch (err) { flash(err.response?.data?.error || 'Load failed.', false); }
+  };
+
+  const del = async () => {
+    if (!rosterId) return resetBoard();
+    if (!window.confirm(`Delete roster "${rosterName}"?`)) return;
+    try {
+      await axios.delete(`/api/admin/rosters/${rosterId}`);
+      loadSaved(); resetBoard(); flash('Roster deleted.');
+    } catch (err) { flash(err.response?.data?.error || 'Delete failed.', false); }
+  };
+
+  const post = async () => {
+    setBusy(true);
+    try {
+      await axios.post('/api/admin/rosters/post', { name: rosterName || 'Roster', parties: buildPayloadParties() });
+      flash('Posted to Discord.');
+    } catch (err) { flash(err.response?.data?.error || 'Post failed.', false); }
+    finally { setBusy(false); }
+  };
+
+  const activeMember = activeId ? byId[activeId] : null;
+
+  return (
+    <div className="max-w-[1400px] mx-auto px-6 py-12">
+      <div className="eyebrow text-brass text-[11px] mb-3">War Table</div>
+      <h1 className="font-display text-4xl md:text-5xl text-bone tracking-[0.08em]">Parties</h1>
+      <p className="text-ash mt-2">Drag members into parties, set roles, save rosters, and post to Discord.</p>
+      <div className="rule-fade my-8" />
+
+      {/* Roster control bar */}
+      <div className="panel rounded-sm p-4 mb-6 flex flex-wrap items-center gap-3">
+        <input
+          value={rosterName} onChange={(e) => setRosterName(e.target.value)} placeholder="Roster name"
+          className="bg-hall border border-line rounded px-3 py-2 text-bone focus:outline-none focus:border-brass w-52"
+        />
+        <button onClick={save} disabled={busy} className="inline-flex items-center gap-2 px-4 py-2 bg-brass hover:bg-brassbright text-ink font-semibold rounded-sm transition-colors disabled:opacity-40">
+          <Save className="w-4 h-4" /> {rosterId ? 'Update' : 'Save'}
+        </button>
+        <select
+          value={rosterId || ''} onChange={(e) => load(e.target.value)}
+          className="bg-hall border border-line rounded px-3 py-2 text-bone focus:outline-none focus:border-brass"
+        >
+          <option value="">Load roster…</option>
+          {saved.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+        </select>
+        <button onClick={resetBoard} className="inline-flex items-center gap-2 px-3 py-2 text-ash hover:text-bone transition-colors">
+          <Plus className="w-4 h-4" /> New
+        </button>
+        <button onClick={del} className="inline-flex items-center gap-2 px-3 py-2 text-ash hover:text-oxblood transition-colors">
+          <Trash2 className="w-4 h-4" /> Delete
+        </button>
+        <div className="flex-1" />
+        <button onClick={post} disabled={busy} className="inline-flex items-center gap-2 px-5 py-2 border border-brass/50 text-brassbright hover:bg-panelup rounded-sm transition-colors disabled:opacity-40">
+          <Send className="w-4 h-4" /> Post to Discord
+        </button>
+      </div>
+
+      {msg && (
+        <div className={`mb-6 px-5 py-3 rounded-sm border text-sm ${msg.ok ? 'border-brass/40 bg-panel text-bone' : 'border-oxblood/50 bg-oxblooddeep/20 text-bone'}`}>
+          {msg.text}
+        </div>
+      )}
+
+      <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={({ active }) => setActiveId(active.id)} onDragEnd={onDragEnd}>
+        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
+          {/* Pool */}
+          <Droppable id="pool">
+            <div className="panel rounded-sm p-4 lg:sticky lg:top-20">
+              <div className="flex items-center justify-between mb-3">
+                <div className="eyebrow text-[10px] text-brass flex items-center gap-2"><Users className="w-3.5 h-3.5" /> Pool ({pool.length})</div>
+                <button onClick={loadMembers} className="text-ash hover:text-brass" title="Reload members"><RefreshCw className="w-3.5 h-3.5" /></button>
+              </div>
+              <input
+                value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Search…"
+                className="w-full bg-hall border border-line rounded px-3 py-2 text-sm text-bone focus:outline-none focus:border-brass mb-3"
+              />
+              <div className="space-y-2 max-h-[640px] overflow-auto pr-1">
+                {loadingMembers ? (
+                  <div className="text-ash text-sm py-6 text-center">Loading members…</div>
+                ) : membersError ? (
+                  <div className="text-sm text-bone border border-oxblood/40 bg-oxblooddeep/20 rounded p-3">
+                    {membersError}
+                    <button onClick={loadMembers} className="block mt-2 text-brass hover:text-brassbright">Retry</button>
+                  </div>
+                ) : pool.length === 0 ? (
+                  <div className="text-ash text-sm py-6 text-center">Everyone's assigned.</div>
+                ) : (
+                  pool.map((m) => <MemberCard key={m.id} member={m} role={roles[m.id]} />)
+                )}
+              </div>
+            </div>
+          </Droppable>
+
+          {/* Parties grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            {parties.map((p) => (
+              <PartyCard
+                key={p.id} party={p} byId={byId} roles={roles}
+                onRename={renameParty} onRole={setRole}
+              />
+            ))}
+          </div>
+        </div>
+
+        <DragOverlay>
+          {activeMember ? <MemberCard member={activeMember} role={roles[activeMember.id]} overlay /> : null}
+        </DragOverlay>
+      </DndContext>
+    </div>
+  );
+}
+
+function Droppable({ id, children }) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return <div ref={setNodeRef} className={isOver ? 'ring-1 ring-brass/60 rounded-sm' : ''}>{children}</div>;
+}
+
+function PartyCard({ party, byId, roles, onRename, onRole }) {
+  const { setNodeRef, isOver } = useDroppable({ id: party.id });
+  const full = party.memberIds.length >= PARTY_SIZE;
+  return (
+    <div ref={setNodeRef} className={`rounded-sm border bg-panel p-3 transition-colors ${isOver ? 'border-brass/70' : 'border-line'}`}>
+      <div className="flex items-center justify-between mb-3">
+        <input
+          value={party.name} onChange={(e) => onRename(party.id, e.target.value)}
+          className="bg-transparent font-display text-bone text-sm tracking-[0.06em] focus:outline-none focus:text-brassbright w-32"
+        />
+        <span className={`font-mono text-xs ${full ? 'text-oxblood' : 'text-ash'}`}>{party.memberIds.length}/{PARTY_SIZE}</span>
+      </div>
+      <div className="space-y-2 min-h-[120px]">
+        {party.memberIds.length === 0 ? (
+          <div className="text-ash/50 text-xs text-center py-8 border border-dashed border-line rounded">Drop members here</div>
+        ) : (
+          party.memberIds.map((id) => (
+            <MemberCard key={id} member={byId[id] || { id, name: 'Unknown' }} role={roles[id]} onRole={onRole} inParty />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MemberCard({ member, role, onRole, inParty, overlay }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: member.id });
+  const rs = ROLE_STYLE[role];
+  return (
+    <div
+      ref={setNodeRef} {...listeners} {...attributes}
+      className={`group flex items-center gap-2 bg-hall border border-line ${rs ? `border-l-2 ${rs.ring}` : ''} rounded px-2.5 py-2 cursor-grab active:cursor-grabbing select-none ${isDragging ? 'opacity-30' : ''} ${overlay ? 'shadow-xl' : ''}`}
+    >
+      {member.avatar
+        ? <img src={member.avatar} alt="" className="w-6 h-6 rounded-full border border-line shrink-0" />
+        : <span className="w-6 h-6 rounded-full bg-panelup border border-line shrink-0 flex items-center justify-center text-[10px] text-brass">{(member.name || '?').slice(0, 1).toUpperCase()}</span>}
+      <span className={`text-sm truncate flex-1 ${member.missing ? 'text-ash italic' : 'text-bone'}`} title={member.missing ? 'No longer in the server' : member.name}>
+        {member.name}
+      </span>
+      {inParty && (
+        <div className="flex gap-1 opacity-60 group-hover:opacity-100 transition-opacity" onPointerDown={(e) => e.stopPropagation()}>
+          {ROLES.map((r) => (
+            <button
+              key={r} onClick={() => onRole(member.id, r)} title={r}
+              className={`w-5 h-5 rounded-full text-[9px] font-bold flex items-center justify-center border transition-colors ${role === r ? `${ROLE_STYLE[r].dot} text-ink border-transparent` : 'border-line text-ash hover:text-bone'}`}
+            >
+              {r[0]}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
