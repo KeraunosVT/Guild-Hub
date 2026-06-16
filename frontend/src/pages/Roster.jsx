@@ -1,27 +1,22 @@
 import { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import weaponToClass from '../../../shared/weaponClasses.json';
 import { ArrowUp, ArrowDown } from 'lucide-react';
-
-function getClassName(w1, w2) {
-  if (!w1) return '—';
-  const a = (w1 || '').trim();
-  const b = (w2 || '').trim();
-  return weaponToClass[a + b] || weaponToClass[b + a] || `${a} ${b}`.trim() || '—';
-}
 
 const fmt = (n) => (Number(n) || 0).toLocaleString();
 const fmtM = (n) => ((Number(n) || 0) / 1e6).toFixed(1) + 'M';
+const fmtAvg = (n) => (Number(n) || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
 
 const COLUMNS = [
-  { key: 'player_name', label: 'Player', align: 'left', kind: 'text' },
-  { key: 'class', label: 'Class', align: 'left', kind: 'class' },
-  { key: 'matches', label: 'Matches', align: 'right', kind: 'num' },
-  { key: 'kills', label: 'Kills', align: 'right', kind: 'num' },
-  { key: 'assists', label: 'Assists', align: 'right', kind: 'num' },
-  { key: 'damage_dealt', label: 'Dmg Dealt', align: 'right', kind: 'm' },
-  { key: 'damage_taken', label: 'Dmg Taken', align: 'right', kind: 'm' },
-  { key: 'healing', label: 'Healing', align: 'right', kind: 'm' },
+  { key: 'player_name',  label: 'Player',       align: 'left',  render: (p) => p.player_name, cls: 'font-semibold text-bone' },
+  { key: 'matches',      label: 'Matches',      align: 'right', render: (p) => fmt(p.matches) },
+  { key: 'kills',        label: 'Kills',        align: 'right', render: (p) => fmt(p.kills), cls: 'text-brassbright' },
+  { key: 'assists',      label: 'Assists',      align: 'right', render: (p) => fmt(p.assists) },
+  { key: 'damage_dealt', label: 'Dmg Dealt',    align: 'right', render: (p) => fmtM(p.damage_dealt) },
+  { key: 'damage_taken', label: 'Dmg Taken',    align: 'right', render: (p) => fmtM(p.damage_taken) },
+  { key: 'healing',      label: 'Healing',      align: 'right', render: (p) => fmtM(p.healing) },
+  { key: 'avg_ka',       label: 'Avg K+A',      align: 'right', render: (p) => fmtAvg(p.avg_ka),     cls: 'text-brassbright' },
+  { key: 'avg_dealt',    label: 'Avg Dmg',      align: 'right', render: (p) => fmtM(p.avg_dealt) },
+  { key: 'avg_healing',  label: 'Avg Healing',  align: 'right', render: (p) => fmtM(p.avg_healing) },
 ];
 
 export default function Roster() {
@@ -35,7 +30,16 @@ export default function Roster() {
   const fetchPlayers = () => {
     setLoading(true); setError(false);
     axios.get('/api/players')
-      .then((res) => setPlayers((res.data.players || []).map((p) => ({ ...p, class: getClassName(p.weapon_1, p.weapon_2) }))))
+      .then((res) => setPlayers((res.data.players || []).map((p) => {
+        const m = Number(p.matches) || 0;
+        const per = (v) => (m ? (Number(v) || 0) / m : 0);
+        return {
+          ...p,
+          avg_ka: per((Number(p.kills) || 0) + (Number(p.assists) || 0)),
+          avg_dealt: per(p.damage_dealt),
+          avg_healing: per(p.healing),
+        };
+      })))
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   };
@@ -44,7 +48,7 @@ export default function Roster() {
 
   const sortBy = (key) => {
     if (key === sortKey) setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'));
-    else { setSortKey(key); setSortDir(key === 'player_name' || key === 'class' ? 'asc' : 'desc'); }
+    else { setSortKey(key); setSortDir(key === 'player_name' ? 'asc' : 'desc'); }
   };
 
   const rows = useMemo(() => {
@@ -85,7 +89,7 @@ export default function Roster() {
         <div className="py-20 text-center text-ash">No members on record yet.</div>
       ) : (
         <div className="panel rounded-sm overflow-auto">
-          <table className="w-full min-w-[820px] text-sm">
+          <table className="w-full min-w-[960px] text-sm">
             <thead className="border-b border-line">
               <tr className="eyebrow text-[10px] text-ash">
                 <th className="p-4 text-center font-normal w-12">#</th>
@@ -103,14 +107,11 @@ export default function Roster() {
               {rows.map((p, i) => (
                 <tr key={p.player_name + i} className="border-b border-line/60 hover:bg-panelup transition-colors">
                   <td className="p-4 text-center font-mono text-ash">{i + 1}</td>
-                  <td className="p-4 font-semibold text-bone">{p.player_name}</td>
-                  <td className="p-4 text-brassbright">{p.class}</td>
-                  <td className="p-4 text-right font-mono text-bone">{fmt(p.matches)}</td>
-                  <td className="p-4 text-right font-mono text-brassbright">{fmt(p.kills)}</td>
-                  <td className="p-4 text-right font-mono text-bone">{fmt(p.assists)}</td>
-                  <td className="p-4 text-right font-mono text-bone">{fmtM(p.damage_dealt)}</td>
-                  <td className="p-4 text-right font-mono text-bone">{fmtM(p.damage_taken)}</td>
-                  <td className="p-4 text-right font-mono text-bone">{fmtM(p.healing)}</td>
+                  {COLUMNS.map((c) => (
+                    <td key={c.key} className={`p-4 ${c.align === 'right' ? 'text-right font-mono' : ''} ${c.cls || 'text-bone'}`}>
+                      {c.render(p)}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
