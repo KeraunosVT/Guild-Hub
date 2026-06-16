@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../auth';
@@ -52,6 +52,27 @@ export default function Admin() {
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(null);
+  const [mappedNames, setMappedNames] = useState(null); // Set of normalized known names
+
+  // Load known names so the review table can flag unrecognized ones.
+  useEffect(() => {
+    axios.get('/api/admin/identities')
+      .then((res) => {
+        const s = new Set();
+        (res.data.identities || []).forEach((it) => {
+          if (it.display_name) s.add(it.display_name.trim().toLowerCase());
+          (Array.isArray(it.ingame_names) ? it.ingame_names : []).forEach((n) => s.add((n || '').trim().toLowerCase()));
+        });
+        setMappedNames(s);
+      })
+      .catch(() => setMappedNames(new Set()));
+  }, []);
+
+  const isUnknown = (name) => {
+    if (!mappedNames) return false; // don't flag until loaded
+    const n = (name || '').trim().toLowerCase();
+    return n && !mappedNames.has(n);
+  };
 
   if (!user?.isAdmin) {
     return (
@@ -238,7 +259,14 @@ export default function Admin() {
                         </select>
                       </td>
                       <td className="p-1.5"><TextCell value={p.guild_name} onChange={(v) => updateCell(i, 'guild_name', v)} /></td>
-                      <td className="p-1.5"><TextCell value={p.player_name} onChange={(v) => updateCell(i, 'player_name', v)} /></td>
+                      <td className="p-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <TextCell value={p.player_name} onChange={(v) => updateCell(i, 'player_name', v)} />
+                          {isUnknown(p.player_name) && (
+                            <span title="Unrecognized name — map it on the Names page after saving" className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                          )}
+                        </div>
+                      </td>
                       <td className="p-1.5">
                         <select
                           value={p.team_color} onChange={(e) => updateCell(i, 'team_color', e.target.value)}

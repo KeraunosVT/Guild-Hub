@@ -7,6 +7,29 @@ const { listMembers, postEmbed } = require('./discord');
 
 const ROLE_EMOJI = { Tank: '🛡️', DPS: '⚔️', Healer: '💚' };
 
+// Levenshtein edit distance — used to suggest the closest known player for an
+// unmapped (likely OCR-misread) name.
+function lev(a, b) {
+  a = a || ''; b = b || '';
+  const m = a.length, n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(
+        prev[j] + 1,
+        cur[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+const norm = (s) => (s || '').trim().toLowerCase();
+
 // Build a Discord embed from a roster layout.
 function rosterEmbed(name, parties) {
   const fields = (parties || [])
@@ -80,6 +103,101 @@ module.exports = function createAdminRouter(supabase) {
       .upsert({ discord_id: String(id), role: role || null, updated_at: new Date().toISOString() });
     if (error) return res.status(500).json({ error: 'Failed to save role.' });
     res.json({ ok: true });
+  });
+
+  // ── Player identities / name merging ────────────────────────────────────────
+  router.get('/identities', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    const { data, error } = await supabase.from('player_identities')
+      .select('id, display_name, ingame_names, war_room_role').order('display_name');
+    if (error) return res.status(500).json({ error: 'Failed to load identities.' });
+    res.json({ identities: data || [] });
+  });
+
+  // In-game names from match data that aren't yet mapped to any identity.
+  router.get('/unmapped-names', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    try {
+      const [counts, ids] = await Promise.all([
+        supabase.rpc('get_guild_player_counts'),
+        supabase.from('player_identities').select('id, display_name, ingame_names'),
+      ]);
+      if (counts.error) throw counts.error;
+      if (ids.error) throw ids.error;
+      const identities = ids.data || [];
+
+      const mapped = new Set();
+      identities.forEach((it) => {
+        if (it.display_name) mapped.add(norm(it.display_name));
+        (Array.isArray(it.ingame_names) ? it.ingame_names : []).forEach((n) => mapped.add(norm(n)));
+      });
+
+      const unmapped = (counts.data || [])
+        .filter((c) => !mapped.has(norm(c.player_name)))
+        .map((c) => {
+          let best = null;
+          identities.forEach((it) => {
+            [it.display_name, ...(Array.isArray(it.ingame_names) ? it.ingame_names : [])]
+              .filter(Boolean)
+              .forEach((cand) => {
+                const d = lev(norm(c.player_name), norm(cand));
+                if (best === null || d < best.distance) best = { id: it.id, display_name: it.display_name, distance: d };
+              });
+          });
+          const threshold = Math.max(2, Math.floor((c.player_name || '').length * 0.34));
+          return { name: c.player_name, matches: c.matches, suggestion: best && best.distance <= threshold ? best : null };
+        })
+        .sort((a, b) => b.matches - a.matches);
+
+      res.json({ unmapped, identities });
+    } catch (err) {
+      console.error('Unmapped names error:', err.message);
+      res.status(500).json({ error: 'Failed to load unmapped names.' });
+    }
+  });
+
+  // Attach an in-game name to an existing identity.
+  router.post('/identities/:id/aliases', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    const { name } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'Name required.' });
+    const { data: it, error: gErr } = await supabase
+      .from('player_identities').select('ingame_names').eq('id', req.params.id).single();
+    if (gErr) return res.status(404).json({ error: 'Identity not found.' });
+    const arr = Array.isArray(it.ingame_names) ? it.ingame_names : [];
+    if (!arr.some((n) => norm(n) === norm(name))) arr.push(name);
+    const { error } = await supabase.from('player_identities')
+      .update({ ingame_names: arr, updated_at: new Date().toISOString() }).eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: 'Failed to add alias.' });
+    res.json({ ok: true });
+  });
+
+  // Remove an in-game name from an identity (un-merge a mistake).
+  router.delete('/identities/:id/aliases', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    const { name } = req.body || {};
+    const { data: it, error: gErr } = await supabase
+      .from('player_identities').select('ingame_names').eq('id', req.params.id).single();
+    if (gErr) return res.status(404).json({ error: 'Identity not found.' });
+    const arr = (Array.isArray(it.ingame_names) ? it.ingame_names : []).filter((n) => norm(n) !== norm(name));
+    const { error } = await supabase.from('player_identities')
+      .update({ ingame_names: arr, updated_at: new Date().toISOString() }).eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: 'Failed to remove alias.' });
+    res.json({ ok: true });
+  });
+
+  // Create a new identity (optionally seeded with a first in-game name).
+  router.post('/identities', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    const { display_name, ingame_names } = req.body || {};
+    if (!display_name) return res.status(400).json({ error: 'Display name required.' });
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const aliases = Array.isArray(ingame_names) ? ingame_names : ingame_names ? [ingame_names] : [];
+    const { error } = await supabase.from('player_identities')
+      .insert({ id, display_name: String(display_name).slice(0, 120), ingame_names: aliases, created_at: now, updated_at: now });
+    if (error) return res.status(500).json({ error: 'Failed to create identity.' });
+    res.json({ id });
   });
 
   // ── Roster CRUD ─────────────────────────────────────────────────────────────

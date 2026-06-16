@@ -11,7 +11,7 @@ export default function Masthead() {
     { to: '/', label: 'The Hall', end: true },
     { to: '/war-record', label: 'War Record' },
     { to: '/roster', label: 'Roster' },
-    ...(user?.isAdmin ? [{ to: '/admin', label: 'Admin' }, { to: '/admin/parties', label: 'Parties' }] : []),
+    ...(user?.isAdmin ? [{ to: '/admin', label: 'Admin' }, { to: '/admin/parties', label: 'Parties' }, { to: '/admin/names', label: 'Names' }] : []),
   ];
 
   return (

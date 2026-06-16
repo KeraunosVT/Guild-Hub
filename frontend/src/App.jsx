@@ -9,6 +9,7 @@ import Roster from './pages/Roster';
 import Login from './pages/Login';
 import Admin from './pages/Admin';
 import Parties from './pages/Parties';
+import Names from './pages/Names';
 
 function Layout() {
   return (
@@ -46,6 +47,7 @@ function Gate() {
           <Route path="/roster" element={<Roster />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/admin/parties" element={<Parties />} />
+          <Route path="/admin/names" element={<Names />} />
           {/* Legacy aliases kept so old links still resolve */}
           <Route path="/dashboard" element={<MatchStats />} />
           <Route path="/match-stats" element={<MatchStats />} />
