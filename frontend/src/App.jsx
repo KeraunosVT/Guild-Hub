@@ -5,6 +5,7 @@ import Footer from './components/Footer';
 import Sigil from './components/Sigil';
 import Home from './pages/Home';
 import MatchStats from './pages/MatchStats';
+import Roster from './pages/Roster';
 import Login from './pages/Login';
 import Admin from './pages/Admin';
 import Parties from './pages/Parties';
@@ -42,6 +43,7 @@ function Gate() {
         <Route element={<Layout />}>
           <Route path="/" element={<Home />} />
           <Route path="/war-record" element={<MatchStats />} />
+          <Route path="/roster" element={<Roster />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/admin/parties" element={<Parties />} />
           {/* Legacy aliases kept so old links still resolve */}

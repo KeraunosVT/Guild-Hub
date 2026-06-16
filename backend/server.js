@@ -61,6 +61,19 @@ app.use('/api', (req, res, next) => {
 const createAdminRouter = require('./admin');
 app.use('/api/admin', requireAdmin, createAdminRouter(supabase));
 
+// ── ALL-TIME PLAYER STATS (our guild only) ───────────────────────────────────
+app.get('/api/players', async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+  try {
+    const { data, error } = await supabase.rpc('get_player_stats');
+    if (error) throw error;
+    res.json({ players: data || [] });
+  } catch (err) {
+    console.error('Player stats error:', err.message);
+    res.status(500).json({ error: 'Failed to load player stats.' });
+  }
+});
+
 // ── STATS SUMMARY ────────────────────────────────────────────────────────────
 app.get('/api/stats/summary', async (req, res) => {
   if (!supabase) {
