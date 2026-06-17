@@ -96,7 +96,7 @@ const team = (v) => {
   return null;
 };
 
-module.exports = function createAdminRouter(supabase) {
+module.exports = function createAdminRouter(supabase, gateway) {
   const router = express.Router();
 
   router.get('/whoami', (req, res) => {
@@ -420,6 +420,88 @@ module.exports = function createAdminRouter(supabase) {
     }
 
     res.json({ match_id: matchId, inserted: rows.length });
+  });
+
+  // ── Attendance: voice-channel snapshots ──────────────────────────────────────
+  router.get('/voice-channels', (req, res) => {
+    if (!gateway) return res.status(503).json({ error: 'Discord gateway not available.' });
+    res.json({ channels: gateway.listVoiceChannels() });
+  });
+
+  router.get('/voice-channels/:id/members', (req, res) => {
+    if (!gateway) return res.status(503).json({ error: 'Discord gateway not available.' });
+    res.json({ members: gateway.getVoiceMembers(req.params.id) });
+  });
+
+  router.get('/events', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    const { data, error } = await supabase
+      .from('events').select('id, title, event_date, created_at')
+      .order('event_date', { ascending: false });
+    if (error) return res.status(500).json({ error: 'Failed to load events.' });
+
+    const eventIds = (data || []).map((e) => e.id);
+    let countMap = {};
+    if (eventIds.length > 0) {
+      const { data: att } = await supabase
+        .from('event_attendance').select('event_id')
+        .in('event_id', eventIds);
+      (att || []).forEach((a) => { countMap[a.event_id] = (countMap[a.event_id] || 0) + 1; });
+    }
+
+    res.json({ events: (data || []).map((e) => ({ ...e, attendees: countMap[e.id] || 0 })) });
+  });
+
+  router.get('/events/:id', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    const { data: event, error: eErr } = await supabase
+      .from('events').select('*').eq('id', req.params.id).single();
+    if (eErr) return res.status(404).json({ error: 'Event not found.' });
+    const { data: attendees, error: aErr } = await supabase
+      .from('event_attendance').select('*').eq('event_id', req.params.id)
+      .order('display_name');
+    if (aErr) return res.status(500).json({ error: 'Failed to load attendees.' });
+    res.json({ event, attendees: attendees || [] });
+  });
+
+  router.post('/events', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    const { title, event_date, attendees } = req.body || {};
+    if (!title) return res.status(400).json({ error: 'Title is required.' });
+    if (!Array.isArray(attendees) || attendees.length === 0) {
+      return res.status(400).json({ error: 'At least one attendee is required.' });
+    }
+
+    const eventId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    const { error: eErr } = await supabase.from('events').insert({
+      id: eventId, title: String(title).slice(0, 200),
+      event_date: event_date || null, created_at: now,
+    });
+    if (eErr) { console.error('Event insert error:', eErr.message); return res.status(500).json({ error: 'Failed to create event.' }); }
+
+    const rows = attendees.map((a) => ({
+      id: crypto.randomUUID(), event_id: eventId,
+      discord_id: String(a.id), display_name: String(a.name || '').slice(0, 120),
+      joined_at: now,
+    }));
+    const { error: aErr } = await supabase.from('event_attendance').insert(rows);
+    if (aErr) {
+      console.error('Attendance insert error:', aErr.message);
+      await supabase.from('events').delete().eq('id', eventId);
+      return res.status(500).json({ error: 'Failed to save attendees — event rolled back.' });
+    }
+
+    res.json({ id: eventId, attendees: rows.length });
+  });
+
+  router.delete('/events/:id', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    await supabase.from('event_attendance').delete().eq('event_id', req.params.id);
+    const { error } = await supabase.from('events').delete().eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: 'Failed to delete event.' });
+    res.json({ ok: true });
   });
 
   return router;

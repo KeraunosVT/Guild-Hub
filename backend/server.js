@@ -15,6 +15,9 @@ const LOOT = require('../shared/loot.json');
 const LOOT_KEYS = new Set(LOOT.categories.flatMap((c) => c.items.map((i) => i.key)));
 const LOOT_PRIORITIES = new Set(LOOT.priorities);
 
+const gateway = require('./discordGateway');
+gateway.start();
+
 const app = express();
 
 app.use(cors({ origin: true, credentials: true }));
@@ -64,7 +67,7 @@ app.use('/api', (req, res, next) => {
 
 // ── ADMIN AREA (requires admin role) ─────────────────────────────────────────
 const createAdminRouter = require('./admin');
-app.use('/api/admin', requireAdmin, createAdminRouter(supabase));
+app.use('/api/admin', requireAdmin, createAdminRouter(supabase, gateway));
 
 // ── MEMBERS AREA: Archboss shard tracker ─────────────────────────────────────
 // Any logged-in member sees the full tally. Editing a row is restricted to its

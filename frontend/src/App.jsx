@@ -13,6 +13,7 @@ import Admin from './pages/Admin';
 import Parties from './pages/Parties';
 import Names from './pages/Names';
 import LootTally from './pages/LootTally';
+import Attendance from './pages/Attendance';
 
 function Layout() {
   return (
@@ -54,6 +55,7 @@ function Gate() {
           <Route path="/admin/parties" element={<Parties />} />
           <Route path="/admin/names" element={<Names />} />
           <Route path="/admin/loot" element={<LootTally />} />
+          <Route path="/admin/attendance" element={<Attendance />} />
           {/* Legacy aliases kept so old links still resolve */}
           <Route path="/dashboard" element={<MatchStats />} />
           <Route path="/match-stats" element={<MatchStats />} />

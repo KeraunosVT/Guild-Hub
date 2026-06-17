@@ -21,6 +21,7 @@ const adminLinks = [
   { to: '/admin/parties', label: 'Parties' },
   { to: '/admin/names', label: 'Names' },
   { to: '/admin/loot', label: 'Loot Council' },
+  { to: '/admin/attendance', label: 'Attendance' },
 ];
 
 const linkClass = ({ isActive }) =>
