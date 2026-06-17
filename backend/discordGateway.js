@@ -22,7 +22,7 @@ function start() {
     ],
   });
 
-  client.once('ready', () => {
+  client.once('clientReady', () => {
     ready = true;
     console.log('✅ Discord gateway connected');
   });
