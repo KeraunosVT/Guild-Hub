@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { useAuth } from '../auth';
 import Sigil from '../components/Sigil';
-import { RefreshCw, Camera, Trash2, ChevronDown, Users, CalendarDays, Loader2 } from 'lucide-react';
+import { RefreshCw, Camera, Trash2, ChevronDown, Users, CalendarDays, Loader2, ArrowUp, ArrowDown, BarChart3 } from 'lucide-react';
 
 export default function Attendance() {
   const { user } = useAuth();
@@ -21,6 +21,11 @@ export default function Attendance() {
   const [expanded, setExpanded] = useState(null);
   const [detail, setDetail] = useState({});
 
+  const [stats, setStats] = useState({ totalEvents: 0, members: [] });
+  const [loadingStats, setLoadingStats] = useState(true);
+  const [statSort, setStatSort] = useState('rate'); // 'rate' | 'name' | 'attended'
+  const [statDir, setStatDir] = useState('desc');
+
   const loadChannels = () => {
     axios.get('/api/admin/voice-channels')
       .then((res) => setChannels(res.data.channels || []))
@@ -35,7 +40,15 @@ export default function Attendance() {
       .finally(() => setLoadingEvents(false));
   };
 
-  useEffect(() => { loadChannels(); loadEvents(); }, []);
+  const loadStats = () => {
+    setLoadingStats(true);
+    axios.get('/api/admin/attendance-stats')
+      .then((res) => setStats(res.data || { totalEvents: 0, members: [] }))
+      .catch(() => {})
+      .finally(() => setLoadingStats(false));
+  };
+
+  useEffect(() => { loadChannels(); loadEvents(); loadStats(); }, []);
 
   if (!user?.isAdmin) {
     return (
@@ -73,7 +86,7 @@ export default function Attendance() {
       });
       flash(`Saved — ${res.data.attendees} attendees logged.`);
       setSnapped([]); setTitle(''); setEventDate('');
-      loadEvents();
+      loadEvents(); loadStats();
     } catch (err) {
       flash(err.response?.data?.error || 'Could not save event.', false);
     } finally {
@@ -88,6 +101,7 @@ export default function Attendance() {
       setEvents((prev) => prev.filter((e) => e.id !== id));
       if (expanded === id) { setExpanded(null); setDetail((d) => { const n = { ...d }; delete n[id]; return n; }); }
       flash('Event deleted.');
+      loadStats();
     } catch (err) {
       flash(err.response?.data?.error || 'Delete failed.', false);
     }
@@ -106,10 +120,18 @@ export default function Attendance() {
     }
   };
 
-  const channelLabel = useMemo(() => {
-    const ch = channels.find((c) => c.id === selectedChannel);
-    return ch ? ch.name : '';
-  }, [channels, selectedChannel]);
+  const sortedStats = useMemo(() => {
+    const dir = statDir === 'asc' ? 1 : -1;
+    return [...stats.members].sort((a, b) => {
+      if (statSort === 'name') return a.display_name.localeCompare(b.display_name) * dir;
+      return ((a[statSort] || 0) - (b[statSort] || 0)) * dir;
+    });
+  }, [stats.members, statSort, statDir]);
+
+  const toggleStatSort = (key) => {
+    if (statSort === key) setStatDir((d) => (d === 'desc' ? 'asc' : 'desc'));
+    else { setStatSort(key); setStatDir(key === 'name' ? 'asc' : 'desc'); }
+  };
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-12">
@@ -201,74 +223,120 @@ export default function Attendance() {
         </div>
       </div>
 
-      {/* ── Past events ───────────────────────────────────────────── */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="font-display text-2xl text-bone tracking-[0.08em]">Past Events</h2>
-          <button onClick={loadEvents} className="inline-flex items-center gap-2 text-sm text-ash hover:text-brass">
-            <RefreshCw className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="rule-fade mb-6" />
-
-        {loadingEvents ? (
-          <div className="py-16 text-center text-ash">Reading the rolls…</div>
-        ) : events.length === 0 ? (
-          <div className="py-16 text-center text-ash">No events logged yet.</div>
-        ) : (
-          <div className="panel rounded-sm divide-y divide-line">
-            {events.map((ev) => {
-              const isOpen = expanded === ev.id;
-              const attendees = detail[ev.id];
-              return (
-                <div key={ev.id}>
-                  <button
-                    onClick={() => toggleEvent(ev.id)}
-                    className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-panelup transition-colors"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="font-medium text-bone truncate">{ev.title}</div>
-                      <div className="flex items-center gap-3 text-xs text-ash mt-1">
-                        <span className="inline-flex items-center gap-1">
-                          <CalendarDays className="w-3 h-3" />
-                          {ev.event_date ? new Date(ev.event_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'No date'}
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <Users className="w-3 h-3" /> {ev.attendees}
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); deleteEvent(ev.id); }}
-                      className="text-ash hover:text-oxblood shrink-0 p-1" title="Delete event"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                    <ChevronDown className={`w-4 h-4 text-ash shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                  </button>
-
-                  {isOpen && (
-                    <div className="px-5 pb-4">
-                      {!attendees ? (
-                        <div className="py-4 text-center text-ash"><Loader2 className="w-4 h-4 animate-spin inline mr-2" />Loading…</div>
-                      ) : attendees.length === 0 ? (
-                        <div className="py-4 text-center text-ash">No attendees recorded.</div>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          {attendees.map((a) => (
-                            <span key={a.id} className="inline-flex items-center gap-1.5 text-sm bg-hall border border-line rounded-full px-3 py-1 text-ash">
-                              {a.display_name}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+      {/* ── Past events + Attendance sidebar ─────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8">
+        {/* Event list */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-display text-2xl text-bone tracking-[0.08em]">Past Events</h2>
+            <button onClick={loadEvents} className="inline-flex items-center gap-2 text-sm text-ash hover:text-brass">
+              <RefreshCw className="w-4 h-4" />
+            </button>
           </div>
-        )}
+          <div className="rule-fade mb-6" />
+
+          {loadingEvents ? (
+            <div className="py-16 text-center text-ash">Reading the rolls…</div>
+          ) : events.length === 0 ? (
+            <div className="py-16 text-center text-ash">No events logged yet.</div>
+          ) : (
+            <div className="panel rounded-sm divide-y divide-line">
+              {events.map((ev) => {
+                const isOpen = expanded === ev.id;
+                const attendees = detail[ev.id];
+                return (
+                  <div key={ev.id}>
+                    <button
+                      onClick={() => toggleEvent(ev.id)}
+                      className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-panelup transition-colors"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-bone truncate">{ev.title}</div>
+                        <div className="flex items-center gap-3 text-xs text-ash mt-1">
+                          <span className="inline-flex items-center gap-1">
+                            <CalendarDays className="w-3 h-3" />
+                            {ev.event_date ? new Date(ev.event_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'No date'}
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <Users className="w-3 h-3" /> {ev.attendees}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); deleteEvent(ev.id); }}
+                        className="text-ash hover:text-oxblood shrink-0 p-1" title="Delete event"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <ChevronDown className={`w-4 h-4 text-ash shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {isOpen && (
+                      <div className="px-5 pb-4">
+                        {!attendees ? (
+                          <div className="py-4 text-center text-ash"><Loader2 className="w-4 h-4 animate-spin inline mr-2" />Loading…</div>
+                        ) : attendees.length === 0 ? (
+                          <div className="py-4 text-center text-ash">No attendees recorded.</div>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {attendees.map((a) => (
+                              <span key={a.id} className="inline-flex items-center gap-1.5 text-sm bg-hall border border-line rounded-full px-3 py-1 text-ash">
+                                {a.display_name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Attendance rate sidebar */}
+        <aside className="lg:sticky lg:top-20 self-start">
+          <div className="panel rounded-sm p-4">
+            <div className="eyebrow text-[10px] text-brass flex items-center gap-2 mb-1">
+              <BarChart3 className="w-3.5 h-3.5" /> Attendance Rate
+            </div>
+            <div className="text-xs text-ash mb-4">
+              {stats.totalEvents} event{stats.totalEvents === 1 ? '' : 's'} tracked
+            </div>
+
+            {loadingStats ? (
+              <div className="py-8 text-center text-ash"><Loader2 className="w-4 h-4 animate-spin inline" /></div>
+            ) : sortedStats.length === 0 ? (
+              <p className="text-ash text-sm py-4">No attendance data yet.</p>
+            ) : (
+              <>
+                <div className="flex items-center gap-1 text-[10px] eyebrow text-ash mb-2 px-1">
+                  <button onClick={() => toggleStatSort('name')} className="flex-1 text-left hover:text-bone flex items-center gap-1">
+                    Member {statSort === 'name' && (statDir === 'asc' ? <ArrowUp className="w-2.5 h-2.5 text-brass" /> : <ArrowDown className="w-2.5 h-2.5 text-brass" />)}
+                  </button>
+                  <button onClick={() => toggleStatSort('attended')} className="w-10 text-right hover:text-bone flex items-center justify-end gap-0.5">
+                    # {statSort === 'attended' && (statDir === 'asc' ? <ArrowUp className="w-2.5 h-2.5 text-brass" /> : <ArrowDown className="w-2.5 h-2.5 text-brass" />)}
+                  </button>
+                  <button onClick={() => toggleStatSort('rate')} className="w-12 text-right hover:text-bone flex items-center justify-end gap-0.5">
+                    Rate {statSort === 'rate' && (statDir === 'asc' ? <ArrowUp className="w-2.5 h-2.5 text-brass" /> : <ArrowDown className="w-2.5 h-2.5 text-brass" />)}
+                  </button>
+                </div>
+                <div className="space-y-1 max-h-[560px] overflow-auto pr-1">
+                  {sortedStats.map((m) => (
+                    <div key={m.discord_id} className="flex items-center gap-2 px-1 py-1.5 rounded hover:bg-panelup transition-colors">
+                      <span className="text-sm text-bone truncate flex-1">{m.display_name}</span>
+                      <span className="font-mono text-xs text-ash w-10 text-right shrink-0">{m.attended}/{stats.totalEvents}</span>
+                      <span className={`font-mono text-xs w-12 text-right shrink-0 ${m.rate >= 75 ? 'text-emerald-400' : m.rate >= 40 ? 'text-brassbright' : 'text-oxblood'}`}>
+                        {m.rate}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </aside>
       </div>
     </div>
   );

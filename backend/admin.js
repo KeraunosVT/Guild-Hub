@@ -496,6 +496,36 @@ module.exports = function createAdminRouter(supabase, gateway) {
     res.json({ id: eventId, attendees: rows.length });
   });
 
+  router.get('/attendance-stats', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    try {
+      const { data: evts, error: eErr } = await supabase.from('events').select('id');
+      if (eErr) throw eErr;
+      const totalEvents = (evts || []).length;
+      if (totalEvents === 0) return res.json({ totalEvents: 0, members: [] });
+
+      const { data: att, error: aErr } = await supabase
+        .from('event_attendance').select('discord_id, display_name');
+      if (aErr) throw aErr;
+
+      const map = {};
+      (att || []).forEach((a) => {
+        if (!map[a.discord_id]) map[a.discord_id] = { discord_id: a.discord_id, display_name: a.display_name, attended: 0 };
+        map[a.discord_id].attended++;
+        if (a.display_name) map[a.discord_id].display_name = a.display_name;
+      });
+
+      const members = Object.values(map)
+        .map((m) => ({ ...m, rate: Math.round((m.attended / totalEvents) * 100) }))
+        .sort((a, b) => b.rate - a.rate || a.display_name.localeCompare(b.display_name));
+
+      res.json({ totalEvents, members });
+    } catch (err) {
+      console.error('Attendance stats error:', err.message);
+      res.status(500).json({ error: 'Failed to compute attendance stats.' });
+    }
+  });
+
   router.delete('/events/:id', async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
     await supabase.from('event_attendance').delete().eq('event_id', req.params.id);
