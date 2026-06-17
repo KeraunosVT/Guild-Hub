@@ -64,7 +64,7 @@ export default function Loot() {
   const myCount = Object.keys(picks).length;
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-12">
+    <div className="max-w-6xl mx-auto px-6 py-12">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <div className="eyebrow text-brass text-[11px] mb-3">Members Area</div>

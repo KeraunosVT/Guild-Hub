@@ -83,7 +83,7 @@ export default function Names() {
   );
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-12">
+    <div className="max-w-6xl mx-auto px-6 py-12">
       <div className="eyebrow text-brass text-[11px] mb-3">War Table</div>
       <h1 className="font-display text-4xl md:text-5xl text-bone tracking-[0.08em]">Merge Names</h1>
       <p className="text-ash mt-2">Assign misread in-game names to the right player. Mapped names roll up automatically across all stats.</p>
