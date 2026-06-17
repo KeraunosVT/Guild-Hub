@@ -7,6 +7,7 @@ import Home from './pages/Home';
 import MatchStats from './pages/MatchStats';
 import Roster from './pages/Roster';
 import Shards from './pages/Shards';
+import Loot from './pages/Loot';
 import Login from './pages/Login';
 import Admin from './pages/Admin';
 import Parties from './pages/Parties';
@@ -47,6 +48,7 @@ function Gate() {
           <Route path="/war-record" element={<MatchStats />} />
           <Route path="/roster" element={<Roster />} />
           <Route path="/shards" element={<Shards />} />
+          <Route path="/loot" element={<Loot />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/admin/parties" element={<Parties />} />
           <Route path="/admin/names" element={<Names />} />

@@ -5,11 +5,15 @@ import Sigil from './Sigil';
 import { GUILD } from '../guild';
 import { useAuth } from '../auth';
 
-const memberLinks = [
+const topLinks = [
   { to: '/', label: 'The Hall', end: true },
   { to: '/war-record', label: 'War Record' },
   { to: '/roster', label: 'Roster' },
+];
+
+const membersLinks = [
   { to: '/shards', label: 'Shards' },
+  { to: '/loot', label: 'Loot' },
 ];
 
 const adminLinks = [
@@ -39,10 +43,11 @@ export default function Masthead() {
 
         <div className="flex items-center gap-2">
           <nav className="flex items-center gap-1 text-sm">
-            {memberLinks.map((l) => (
+            {topLinks.map((l) => (
               <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>{l.label}</NavLink>
             ))}
-            {user?.isAdmin && <AdminMenu />}
+            {user && <NavDropdown label="Members" links={membersLinks} />}
+            {user?.isAdmin && <NavDropdown label="Admin" links={adminLinks} />}
           </nav>
 
           {user && (
@@ -62,16 +67,13 @@ export default function Masthead() {
   );
 }
 
-function AdminMenu() {
+function NavDropdown({ label, links }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const { pathname } = useLocation();
-  const active = pathname.startsWith('/admin');
+  const active = links.some((l) => pathname === l.to || pathname.startsWith(l.to + '/'));
 
-  // Close on navigation.
-  useEffect(() => { setOpen(false); }, [pathname]);
-
-  // Close on outside click / Escape.
+  useEffect(() => { setOpen(false); }, [pathname]); // close on navigate
   useEffect(() => {
     if (!open) return;
     const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -88,11 +90,11 @@ function AdminMenu() {
         aria-haspopup="true" aria-expanded={open}
         className={`inline-flex items-center gap-1 px-4 py-2 rounded-md font-medium tracking-wide transition-colors ${active ? 'text-brassbright bg-panel' : 'text-ash hover:text-bone'}`}
       >
-        Admin <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+        {label} <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <div className="absolute right-0 mt-2 w-44 panel rounded-sm shadow-xl py-1 z-50">
-          {adminLinks.map((l) => (
+          {links.map((l) => (
             <NavLink
               key={l.to} to={l.to} end={l.end}
               className={({ isActive }) =>

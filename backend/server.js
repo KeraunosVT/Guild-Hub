@@ -11,6 +11,9 @@ const cookieParser = require('cookie-parser');
 const { router: authRouter, requireAuth, requireAdmin } = require('./auth');
 const { listMembers } = require('./discord');
 const SHARDS = require('../shared/shards.json');
+const LOOT = require('../shared/loot.json');
+const LOOT_KEYS = new Set(LOOT.categories.flatMap((c) => c.items.map((i) => i.key)));
+const LOOT_PRIORITIES = new Set(LOOT.priorities);
 
 const app = express();
 
@@ -98,6 +101,51 @@ app.put('/api/shards/:discordId', async (req, res) => {
     .upsert({ discord_id: target, display_name, shards, updated_at: new Date().toISOString() });
   if (error) { console.error('Shard save error:', error.message); return res.status(500).json({ error: 'Failed to save shards.' }); }
   res.json({ shards });
+});
+
+// ── MEMBERS AREA: Loot wishlist ──────────────────────────────────────────────
+// Members set a priority (PvP / Second Build / PvE) on items they want. Everyone
+// sees per-item demand counts; admins additionally see who wants what.
+app.get('/api/loot', async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+  try {
+    const { data, error } = await supabase.from('loot_wishlists').select('discord_id, display_name, picks');
+    if (error) throw error;
+    const counts = {};
+    const tally = {};
+    let mine = {};
+    (data || []).forEach((r) => {
+      const picks = r.picks || {};
+      if (r.discord_id === req.user.id) mine = picks;
+      Object.entries(picks).forEach(([k, prio]) => {
+        if (!LOOT_KEYS.has(k)) return;
+        counts[k] = (counts[k] || 0) + 1;
+        if (req.user.isAdmin) (tally[k] = tally[k] || []).push({ name: r.display_name || 'Member', priority: prio });
+      });
+    });
+    res.json({ mine, counts, tally: req.user.isAdmin ? tally : undefined });
+  } catch (err) {
+    console.error('Loot load error:', err.message);
+    res.status(500).json({ error: 'Failed to load loot wishlist.' });
+  }
+});
+
+app.put('/api/loot/:discordId', async (req, res) => {
+  const target = req.params.discordId;
+  if (req.user.id !== target && !req.user.isAdmin) {
+    return res.status(403).json({ error: 'You can only edit your own wishlist.' });
+  }
+  if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+  const incoming = req.body?.picks || {};
+  const picks = {};
+  Object.entries(incoming).forEach(([k, prio]) => {
+    if (LOOT_KEYS.has(k) && LOOT_PRIORITIES.has(prio)) picks[k] = prio;
+  });
+  const display_name = (req.body?.display_name || req.user.username || '').slice(0, 120);
+  const { error } = await supabase.from('loot_wishlists')
+    .upsert({ discord_id: target, display_name, picks, updated_at: new Date().toISOString() });
+  if (error) { console.error('Loot save error:', error.message); return res.status(500).json({ error: 'Failed to save wishlist.' }); }
+  res.json({ picks });
 });
 
 // ── ALL-TIME PLAYER STATS (our guild only) ───────────────────────────────────
