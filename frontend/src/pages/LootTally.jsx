@@ -97,7 +97,7 @@ export default function LootTally() {
   return (
     <div className="max-w-6xl mx-auto px-6 py-12">
       <div className="eyebrow text-brass text-[11px] mb-3">War Table</div>
-      <h1 className="font-display text-4xl md:text-5xl text-bone tracking-[0.08em]">Loot Tally</h1>
+      <h1 className="font-display text-4xl md:text-5xl text-bone tracking-[0.08em]">Loot Council</h1>
       <p className="text-ash mt-2">Every wishlisted item by demand. Award an item to mark it Loot Counciled.</p>
       <div className="rule-fade my-8" />
 

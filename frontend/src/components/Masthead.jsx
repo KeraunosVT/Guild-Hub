@@ -20,7 +20,7 @@ const adminLinks = [
   { to: '/admin', label: 'Upload Match', end: true },
   { to: '/admin/parties', label: 'Parties' },
   { to: '/admin/names', label: 'Names' },
-  { to: '/admin/loot', label: 'Loot Tally' },
+  { to: '/admin/loot', label: 'Loot Council' },
 ];
 
 const linkClass = ({ isActive }) =>
