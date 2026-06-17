@@ -32,6 +32,31 @@ function lev(a, b) {
 }
 const norm = (s) => (s || '').trim().toLowerCase();
 
+// Merge parsed rows from one or more screenshots/CSVs into a single reviewed set:
+// de-duplicate by player name (fallback rank), sort by rank, and recompute the
+// data-quality warnings. Shared by the batch and per-file parse paths.
+function mergePlayers(all, fileCount) {
+  const warnings = [];
+  const seen = new Map();
+  let duplicates = 0;
+  for (const p of all) {
+    const key = p.player_name ? `n:${p.player_name.toLowerCase()}` : `r:${p.rank}`;
+    if (seen.has(key)) { duplicates++; continue; }
+    seen.set(key, p);
+  }
+  const players = [...seen.values()].sort((a, b) => (a.rank || 9999) - (b.rank || 9999));
+  if (fileCount > 1) warnings.unshift(`Merged ${fileCount} files into ${players.length} players${duplicates ? `, ${duplicates} duplicate row(s) removed` : ''}.`);
+  if (players.length === 0) {
+    warnings.push('No player rows were detected — check the files and try again.');
+  } else {
+    const missingTeam = players.filter((p) => !p.team_color).length;
+    if (missingTeam) warnings.push(`${missingTeam} row(s) have no team color set.`);
+    const badWeapon = players.filter((p) => !WEAPONS.includes(p.weapon_1) || !WEAPONS.includes(p.weapon_2)).length;
+    if (badWeapon) warnings.push(`${badWeapon} row(s) have a class to confirm.`);
+  }
+  return { players, warnings };
+}
+
 // Build a Discord embed from a roster layout.
 function rosterEmbed(name, parties) {
   const fields = (parties || [])
@@ -292,58 +317,56 @@ module.exports = function createAdminRouter(supabase) {
     }
   });
 
-  // ── Parse one or more uploads into merged draft rows (no DB writes) ─────────
+  // ── Parse a SINGLE upload (per-file, so the UI can show progress + retry) ────
+  router.post('/match/parse-one', upload.single('file'), async (req, res) => {
+    const f = req.file;
+    if (!f) return res.status(400).json({ error: 'No file uploaded.' });
+    try {
+      let players = [];
+      if (f.mimetype.startsWith('image/')) {
+        players = (await parseScreenshot(f.buffer, f.mimetype)).players;
+      } else if (f.mimetype === 'text/csv' || /\.csv$/i.test(f.originalname)) {
+        players = parseCsv(f.buffer.toString('utf8')).players;
+      } else {
+        return res.status(415).json({ error: 'Unsupported file type.' });
+      }
+      res.json({ players: players || [] });
+    } catch (err) {
+      const msg = err.message || 'Could not read that file.';
+      // Gemini overloaded / rate-limited / timed out → mark retryable so the UI
+      // can offer a re-upload without redoing the others.
+      const busy = /overload|rate.?limit|429|503|busy|unavailable|timeout|temporar/i.test(msg);
+      res.status(busy ? 503 : 502).json({ error: busy ? 'The reader is busy right now — retry this screenshot.' : msg, retryable: busy });
+    }
+  });
+
+  // ── Merge already-parsed rows into the reviewed set ─────────────────────────
+  router.post('/match/merge', (req, res) => {
+    const all = Array.isArray(req.body?.players) ? req.body.players : [];
+    const fileCount = Number(req.body?.fileCount) || 0;
+    res.json(mergePlayers(all, fileCount));
+  });
+
+  // ── Parse one or more uploads into merged draft rows (batch; no DB writes) ──
   router.post('/match/parse', upload.array('files', 20), async (req, res) => {
     const files = req.files || [];
     if (files.length === 0) return res.status(400).json({ error: 'No files uploaded.' });
 
-    // Parse every file (images via Gemini in parallel, CSVs directly).
     const results = await Promise.all(files.map(async (f) => {
       try {
-        if (f.mimetype.startsWith('image/')) {
-          const r = await parseScreenshot(f.buffer, f.mimetype);
-          return { players: r.players };
-        }
-        if (f.mimetype === 'text/csv' || /\.csv$/i.test(f.originalname)) {
-          const r = parseCsv(f.buffer.toString('utf8'));
-          return { players: r.players };
-        }
+        if (f.mimetype.startsWith('image/')) return { players: (await parseScreenshot(f.buffer, f.mimetype)).players };
+        if (f.mimetype === 'text/csv' || /\.csv$/i.test(f.originalname)) return { players: parseCsv(f.buffer.toString('utf8')).players };
         return { players: [], error: `${f.originalname}: unsupported type, skipped.` };
       } catch (err) {
         return { players: [], error: `${f.originalname}: ${err.message}` };
       }
     }));
 
-    const warnings = [];
+    const fileWarnings = [];
     const all = [];
-    for (const r of results) {
-      if (r.error) warnings.push(r.error);
-      all.push(...r.players);
-    }
-
-    // Merge: de-duplicate by player name (consistent across overlapping shots),
-    // falling back to rank, then sort by rank.
-    const seen = new Map();
-    let duplicates = 0;
-    for (const p of all) {
-      const key = p.player_name ? `n:${p.player_name.toLowerCase()}` : `r:${p.rank}`;
-      if (seen.has(key)) { duplicates++; continue; }
-      seen.set(key, p);
-    }
-    const players = [...seen.values()].sort((a, b) => (a.rank || 9999) - (b.rank || 9999));
-
-    // Recompute data-quality warnings on the merged set.
-    if (files.length > 1) warnings.unshift(`Merged ${files.length} files into ${players.length} players${duplicates ? `, ${duplicates} duplicate row(s) removed` : ''}.`);
-    if (players.length === 0) {
-      warnings.push('No player rows were detected — check the files and try again.');
-    } else {
-      const missingTeam = players.filter((p) => !p.team_color).length;
-      if (missingTeam) warnings.push(`${missingTeam} row(s) have no team color set.`);
-      const badWeapon = players.filter((p) => !WEAPONS.includes(p.weapon_1) || !WEAPONS.includes(p.weapon_2)).length;
-      if (badWeapon) warnings.push(`${badWeapon} row(s) have a class to confirm.`);
-    }
-
-    res.json({ players, warnings });
+    for (const r of results) { if (r.error) fileWarnings.push(r.error); all.push(...r.players); }
+    const merged = mergePlayers(all, files.length);
+    res.json({ players: merged.players, warnings: [...fileWarnings, ...merged.warnings] });
   });
 
   // ── Commit reviewed rows: create match + insert players ─────────────────────

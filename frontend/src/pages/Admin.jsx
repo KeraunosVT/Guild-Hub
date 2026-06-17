@@ -4,9 +4,9 @@ import axios from 'axios';
 import { useAuth } from '../auth';
 import Sigil from '../components/Sigil';
 import weaponToClass from '../../../shared/weaponClasses.json';
-import { UploadCloud, Plus, Trash2, X, Image as ImageIcon, FileSpreadsheet } from 'lucide-react';
+import { UploadCloud, Plus, Trash2, X, Image as ImageIcon, FileSpreadsheet, Loader2, Check, AlertCircle, RotateCw } from 'lucide-react';
 
-const WEAPONS = ['SnS', 'Greatsword', 'Dagger', 'Crossbow', 'Longbow', 'Staff', 'Wand', 'Spear', 'Orb'];
+const WEAPONS = ['SnS', 'Greatsword', 'Daggers', 'Crossbow', 'Longbow', 'Staff', 'Wand', 'Spear', 'Orb'];
 const STAT_COLS = ['kills', 'assists', 'damage_dealt', 'damage_taken', 'healing'];
 
 // Class options + reverse map (class -> [weapon_1, weapon_2]), derived from the
@@ -43,12 +43,13 @@ const emptyRow = () => ({
 export default function Admin() {
   const { user } = useAuth();
 
-  const [files, setFiles] = useState([]);
+  const [items, setItems] = useState([]); // {id,file,status:'idle'|'processing'|'done'|'failed',players,error,retryable}
   const [title, setTitle] = useState('');
   const [matchDate, setMatchDate] = useState('');
   const [players, setPlayers] = useState(null);
   const [warnings, setWarnings] = useState([]);
-  const [parsing, setParsing] = useState(false);
+  const [running, setRunning] = useState(false);   // a parse pass is in progress
+  const [merging, setMerging] = useState(false);    // building the review set
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(null);
@@ -86,28 +87,63 @@ export default function Admin() {
 
   const addFiles = (list) => {
     const incoming = Array.from(list || []);
-    setFiles((prev) => {
-      const names = new Set(prev.map((f) => f.name + f.size));
-      return [...prev, ...incoming.filter((f) => !names.has(f.name + f.size))];
+    setItems((prev) => {
+      const have = new Set(prev.map((it) => it.id));
+      const next = incoming
+        .map((f) => ({ id: f.name + f.size, file: f, status: 'idle', players: [], error: '', retryable: false }))
+        .filter((it) => !have.has(it.id));
+      return [...prev, ...next];
     });
     setError('');
   };
-  const removeFile = (i) => setFiles((prev) => prev.filter((_, idx) => idx !== i));
+  const removeFile = (id) => setItems((prev) => prev.filter((it) => it.id !== id));
+  const setItem = (id, patch) => setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
 
-  const parse = async () => {
-    if (files.length === 0) return;
-    setParsing(true); setError(''); setDone(null);
+  // Parse a single file; mark it done with its rows, or failed (retryable when
+  // the reader is just busy).
+  const processOne = async (id, file) => {
+    setItem(id, { status: 'processing', error: '' });
     try {
       const form = new FormData();
-      files.forEach((f) => form.append('files', f));
-      const res = await axios.post('/api/admin/match/parse', form);
+      form.append('file', file);
+      const res = await axios.post('/api/admin/match/parse-one', form);
+      setItem(id, { status: 'done', players: res.data.players || [], error: '' });
+    } catch (err) {
+      setItem(id, {
+        status: 'failed',
+        error: err.response?.data?.error || 'Could not read that file.',
+        retryable: err.response?.data?.retryable !== false,
+      });
+    }
+  };
+
+  // Process a set of items with limited concurrency (gentler on the reader).
+  const runPool = async (targets, limit = 2) => {
+    if (targets.length === 0) return;
+    setRunning(true); setError('');
+    const q = [...targets];
+    const worker = async () => { while (q.length) { const it = q.shift(); await processOne(it.id, it.file); } };
+    await Promise.all(Array.from({ length: Math.min(limit, q.length) }, worker));
+    setRunning(false);
+  };
+
+  const parseAll = () => runPool(items.filter((it) => it.status === 'idle' || it.status === 'failed'));
+  const retryFailed = () => runPool(items.filter((it) => it.status === 'failed'));
+  const retryOne = (id) => { const it = items.find((x) => x.id === id); if (it) runPool([it], 1); };
+
+  // Merge every successfully-read file into the reviewed set.
+  const goReview = async () => {
+    const done = items.filter((it) => it.status === 'done');
+    if (done.length === 0) return;
+    setMerging(true); setError(''); setDone(null);
+    try {
+      const res = await axios.post('/api/admin/match/merge', { players: done.flatMap((it) => it.players), fileCount: done.length });
       setPlayers(res.data.players || []);
       setWarnings(res.data.warnings || []);
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not read those files.');
-      setPlayers(null);
+      setError(err.response?.data?.error || 'Could not build the review.');
     } finally {
-      setParsing(false);
+      setMerging(false);
     }
   };
 
@@ -125,7 +161,7 @@ export default function Admin() {
     try {
       const res = await axios.post('/api/admin/match/commit', { title, match_date: matchDate, players });
       setDone(res.data);
-      setPlayers(null); setFiles([]); setTitle(''); setMatchDate(''); setWarnings([]);
+      setPlayers(null); setItems([]); setTitle(''); setMatchDate(''); setWarnings([]);
     } catch (err) {
       setError(err.response?.data?.error || 'Could not save the match.');
     } finally {
@@ -166,17 +202,55 @@ export default function Admin() {
               </div>
             </label>
 
-            {files.length > 0 && (
-              <div className="panel rounded-sm divide-y divide-line">
-                {files.map((f, i) => (
-                  <div key={f.name + f.size} className="flex items-center gap-3 px-4 py-2.5">
-                    {/\.csv$/i.test(f.name) ? <FileSpreadsheet className="w-4 h-4 text-brass shrink-0" /> : <ImageIcon className="w-4 h-4 text-brass shrink-0" />}
-                    <span className="text-sm text-bone truncate flex-1">{f.name}</span>
-                    <button onClick={() => removeFile(i)} className="text-ash hover:text-oxblood" aria-label="Remove">
-                      <X className="w-4 h-4" />
-                    </button>
+            {items.length > 0 && (
+              <div className="space-y-3">
+                {(running || items.some((it) => it.status === 'done' || it.status === 'failed')) && (
+                  <div>
+                    <div className="flex justify-between text-xs text-ash mb-1.5">
+                      <span>
+                        {items.filter((it) => it.status === 'done').length} of {items.length} read
+                        {items.some((it) => it.status === 'failed') ? ` · ${items.filter((it) => it.status === 'failed').length} failed` : ''}
+                      </span>
+                      {running && <span className="inline-flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Reading…</span>}
+                    </div>
+                    <div className="h-1.5 bg-hall rounded-full overflow-hidden flex">
+                      <div className="bg-brass transition-all" style={{ width: `${(items.filter((it) => it.status === 'done').length / items.length) * 100}%` }} />
+                      <div className="bg-oxblood transition-all" style={{ width: `${(items.filter((it) => it.status === 'failed').length / items.length) * 100}%` }} />
+                    </div>
                   </div>
-                ))}
+                )}
+
+                <div className="panel rounded-sm divide-y divide-line">
+                  {items.map((it) => (
+                    <div key={it.id} className="flex items-center gap-3 px-4 py-2.5">
+                      {/\.csv$/i.test(it.file.name) ? <FileSpreadsheet className="w-4 h-4 text-brass shrink-0" /> : <ImageIcon className="w-4 h-4 text-brass shrink-0" />}
+                      <span className="text-sm text-bone truncate flex-1">{it.file.name}</span>
+
+                      {it.status === 'processing' && <span className="text-xs text-ash inline-flex items-center gap-1 shrink-0"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Reading…</span>}
+                      {it.status === 'done' && <span className="text-xs text-emerald-400 inline-flex items-center gap-1 shrink-0"><Check className="w-3.5 h-3.5" /> {it.players.length} row{it.players.length === 1 ? '' : 's'}</span>}
+                      {it.status === 'failed' && (
+                        <span className="text-xs text-oxblood inline-flex items-center gap-1.5 shrink-0" title={it.error}>
+                          <AlertCircle className="w-3.5 h-3.5" /> Failed
+                          {it.retryable && (
+                            <button onClick={() => retryOne(it.id)} disabled={running} className="inline-flex items-center gap-0.5 text-brass hover:text-brassbright disabled:opacity-40">
+                              <RotateCw className="w-3 h-3" /> Retry
+                            </button>
+                          )}
+                        </span>
+                      )}
+
+                      {it.status !== 'processing' && (
+                        <button onClick={() => removeFile(it.id)} className="text-ash hover:text-oxblood shrink-0" aria-label="Remove"><X className="w-4 h-4" /></button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {items.some((it) => it.status === 'failed') && !running && (
+                  <button onClick={retryFailed} className="text-sm text-brass hover:text-brassbright inline-flex items-center gap-1.5">
+                    <RotateCw className="w-4 h-4" /> Retry {items.filter((it) => it.status === 'failed').length} failed
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -197,12 +271,29 @@ export default function Admin() {
                 className="w-full bg-panel border border-line rounded-sm px-4 py-2.5 text-bone focus:outline-none focus:border-brass"
               />
             </div>
-            <button
-              onClick={parse} disabled={files.length === 0 || parsing}
-              className="w-full px-6 py-3 bg-brass hover:bg-brassbright text-ink font-semibold rounded-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {parsing ? 'Reading…' : `Read ${files.length || ''} file${files.length === 1 ? '' : 's'}`.trim()}
-            </button>
+            <div className="space-y-3">
+              {items.some((it) => it.status === 'idle') && (
+                <button
+                  onClick={parseAll} disabled={running || merging}
+                  className="w-full px-6 py-3 bg-brass hover:bg-brassbright text-ink font-semibold rounded-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {running ? 'Reading…' : `Read ${items.filter((it) => it.status === 'idle').length} file${items.filter((it) => it.status === 'idle').length === 1 ? '' : 's'}`}
+                </button>
+              )}
+
+              {items.some((it) => it.status === 'done') && (
+                <button
+                  onClick={goReview} disabled={running || merging}
+                  className="w-full px-6 py-3 border border-brass/50 text-brassbright hover:bg-panelup font-semibold rounded-sm transition-colors disabled:opacity-40"
+                >
+                  {merging ? 'Preparing…' : `Continue to review (${items.filter((it) => it.status === 'done').length} file${items.filter((it) => it.status === 'done').length === 1 ? '' : 's'}) →`}
+                </button>
+              )}
+
+              {items.length === 0 && (
+                <button disabled className="w-full px-6 py-3 bg-brass text-ink font-semibold rounded-sm opacity-40 cursor-not-allowed">Read files</button>
+              )}
+            </div>
           </div>
         </div>
       )}
