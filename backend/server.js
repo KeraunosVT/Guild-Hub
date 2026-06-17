@@ -9,6 +9,8 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const { router: authRouter, requireAuth, requireAdmin } = require('./auth');
+const { listMembers } = require('./discord');
+const SHARDS = require('../shared/shards.json');
 
 const app = express();
 
@@ -60,6 +62,43 @@ app.use('/api', (req, res, next) => {
 // ── ADMIN AREA (requires admin role) ─────────────────────────────────────────
 const createAdminRouter = require('./admin');
 app.use('/api/admin', requireAdmin, createAdminRouter(supabase));
+
+// ── MEMBERS AREA: Archboss shard tracker ─────────────────────────────────────
+// Any logged-in member sees the full tally. Editing a row is restricted to its
+// owner (matched by Discord id) or an admin — enforced here, not just in the UI.
+app.get('/api/members', async (req, res) => {
+  try {
+    const members = await listMembers();
+    const counts = {};
+    if (supabase) {
+      const { data } = await supabase.from('shard_counts').select('discord_id, shards');
+      (data || []).forEach((r) => { counts[r.discord_id] = r.shards || {}; });
+    }
+    res.json({ members: members.map((m) => ({ ...m, shards: counts[m.id] || {} })) });
+  } catch (err) {
+    console.error('Members list error:', err.response?.data?.message || err.message);
+    res.status(502).json({ error: err.response?.data?.message || err.message });
+  }
+});
+
+app.put('/api/shards/:discordId', async (req, res) => {
+  const target = req.params.discordId;
+  if (req.user.id !== target && !req.user.isAdmin) {
+    return res.status(403).json({ error: 'You can only edit your own shards.' });
+  }
+  if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+  const incoming = req.body?.shards || {};
+  const shards = {};
+  SHARDS.types.forEach((t) => {
+    const v = parseInt(incoming[t.key], 10);
+    shards[t.key] = Math.max(0, Math.min(SHARDS.max, Number.isFinite(v) ? v : 0));
+  });
+  const display_name = (req.body?.display_name || req.user.username || '').slice(0, 120);
+  const { error } = await supabase.from('shard_counts')
+    .upsert({ discord_id: target, display_name, shards, updated_at: new Date().toISOString() });
+  if (error) { console.error('Shard save error:', error.message); return res.status(500).json({ error: 'Failed to save shards.' }); }
+  res.json({ shards });
+});
 
 // ── ALL-TIME PLAYER STATS (our guild only) ───────────────────────────────────
 app.get('/api/players', async (req, res) => {

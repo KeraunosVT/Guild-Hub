@@ -9,6 +9,7 @@ const memberLinks = [
   { to: '/', label: 'The Hall', end: true },
   { to: '/war-record', label: 'War Record' },
   { to: '/roster', label: 'Roster' },
+  { to: '/shards', label: 'Shards' },
 ];
 
 const adminLinks = [

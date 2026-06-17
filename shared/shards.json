@@ -1,0 +1,9 @@
+{
+  "max": 90,
+  "types": [
+    { "key": "tevent_ashen", "label": "Tevent Ashen" },
+    { "key": "scorched_branches", "label": "Scorched Branches" },
+    { "key": "scorched_frostblooms", "label": "Scorched Frostblooms" },
+    { "key": "queen_ashen_carapace", "label": "Queen Ashen Carapace" }
+  ]
+}
