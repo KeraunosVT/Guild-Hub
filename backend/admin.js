@@ -1,6 +1,8 @@
 // backend/admin.js — admin-only match ingest. Mounted behind requireAdmin.
 const express = require('express');
 const crypto = require('crypto');
+const LOOT = require('../shared/loot.json');
+const LOOT_KEYS = new Set(LOOT.categories.flatMap((c) => c.items.map((i) => i.key)));
 const multer = require('multer');
 const { parseScreenshot, parseCsv, WEAPONS } = require('./ingest');
 const { listMembers, postEmbed } = require('./discord');
@@ -105,11 +107,42 @@ module.exports = function createAdminRouter(supabase) {
     res.json({ ok: true });
   });
 
+  // ── Loot council: awards ────────────────────────────────────────────────────
+  router.get('/loot/awards', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    const { data, error } = await supabase.from('loot_awards').select('*').order('awarded_at', { ascending: false });
+    if (error) return res.status(500).json({ error: 'Failed to load awards.' });
+    res.json({ awards: data || [] });
+  });
+
+  router.post('/loot/awards', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    const { item_key, discord_id, display_name } = req.body || {};
+    if (!item_key || !discord_id) return res.status(400).json({ error: 'Item and player are required.' });
+    if (!LOOT_KEYS.has(item_key)) return res.status(400).json({ error: 'Unknown item.' });
+    const id = crypto.randomUUID();
+    const { error } = await supabase.from('loot_awards').insert({
+      id, item_key, discord_id: String(discord_id),
+      display_name: display_name || null,
+      awarded_by: req.user.username || req.user.id,
+      awarded_at: new Date().toISOString(),
+    });
+    if (error) return res.status(500).json({ error: 'Failed to record award.' });
+    res.json({ id });
+  });
+
+  router.delete('/loot/awards/:id', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    const { error } = await supabase.from('loot_awards').delete().eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: 'Failed to revoke award.' });
+    res.json({ ok: true });
+  });
+
   // ── Player identities / name merging ────────────────────────────────────────
   router.get('/identities', async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
     const { data, error } = await supabase.from('player_identities')
-      .select('id, display_name, ingame_names, war_room_role').order('display_name');
+      .select('id, display_name, ingame_names').order('display_name');
     if (error) return res.status(500).json({ error: 'Failed to load identities.' });
     res.json({ identities: data || [] });
   });

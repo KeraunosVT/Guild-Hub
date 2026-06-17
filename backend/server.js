@@ -120,10 +120,13 @@ app.get('/api/loot', async (req, res) => {
       Object.entries(picks).forEach(([k, prio]) => {
         if (!LOOT_KEYS.has(k)) return;
         counts[k] = (counts[k] || 0) + 1;
-        if (req.user.isAdmin) (tally[k] = tally[k] || []).push({ name: r.display_name || 'Member', priority: prio });
+        if (req.user.isAdmin) (tally[k] = tally[k] || []).push({ name: r.display_name || 'Member', priority: prio, discord_id: r.discord_id });
       });
     });
-    res.json({ mine, counts, tally: req.user.isAdmin ? tally : undefined });
+    // Items already awarded to the current member (shown as "Loot Counciled").
+    const { data: myAwards } = await supabase.from('loot_awards').select('item_key').eq('discord_id', req.user.id);
+    const awarded = (myAwards || []).map((a) => a.item_key);
+    res.json({ mine, counts, awarded, tally: req.user.isAdmin ? tally : undefined });
   } catch (err) {
     console.error('Loot load error:', err.message);
     res.status(500).json({ error: 'Failed to load loot wishlist.' });

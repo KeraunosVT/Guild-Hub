@@ -3,33 +3,48 @@ import axios from 'axios';
 import { useAuth } from '../auth';
 import Sigil from '../components/Sigil';
 import LOOT from '../../../shared/loot.json';
-import { ChevronDown, RefreshCw } from 'lucide-react';
+import { ChevronDown, RefreshCw, Gavel, X, ScrollText } from 'lucide-react';
 
 const PRIO_SHORT = { 'PvP': 'PvP', 'Second Build': '2nd', 'PvE': 'PvE' };
 const PRIO_DOT = { 'PvP': 'bg-oxblood', 'Second Build': 'bg-brass', 'PvE': 'bg-emerald-500' };
 const PRIO_TEXT = { 'PvP': 'text-oxblood', 'Second Build': 'text-brass', 'PvE': 'text-emerald-400' };
 const PRIO_INDEX = Object.fromEntries(LOOT.priorities.map((p, i) => [p, i]));
 const ALL_ITEMS = LOOT.categories.flatMap((c) => c.items.map((i) => ({ ...i, category: c.label })));
+const ITEM_BY_KEY = Object.fromEntries(ALL_ITEMS.map((i) => [i.key, i]));
 
 export default function LootTally() {
   const { user } = useAuth();
   const [counts, setCounts] = useState({});
   const [tally, setTally] = useState({});
+  const [awards, setAwards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('');
   const [category, setCategory] = useState('');
   const [showZero, setShowZero] = useState(false);
   const [open, setOpen] = useState(() => new Set());
+  const [pending, setPending] = useState(null); // { item, watcher }
+  const [busy, setBusy] = useState(false);
 
   const load = () => {
     setLoading(true); setError('');
-    axios.get('/api/loot')
-      .then((res) => { setCounts(res.data.counts || {}); setTally(res.data.tally || {}); })
+    Promise.all([axios.get('/api/loot'), axios.get('/api/admin/loot/awards')])
+      .then(([loot, aw]) => {
+        setCounts(loot.data.counts || {});
+        setTally(loot.data.tally || {});
+        setAwards(aw.data.awards || []);
+      })
       .catch((err) => setError(err.response?.data?.error || 'Could not load the tally.'))
       .finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
+
+  const awardsByItem = useMemo(() => {
+    const m = {};
+    awards.forEach((a) => { (m[a.item_key] = m[a.item_key] || []).push(a); });
+    return m;
+  }, [awards]);
+  const awardFor = (itemKey, discordId) => (awardsByItem[itemKey] || []).find((a) => a.discord_id === discordId);
 
   const rows = useMemo(() => {
     const f = filter.toLowerCase();
@@ -40,25 +55,34 @@ export default function LootTally() {
         const byPrio = {};
         LOOT.priorities.forEach((p) => { byPrio[p] = 0; });
         watchers.forEach((w) => { if (byPrio[w.priority] != null) byPrio[w.priority]++; });
-        return { ...it, total: counts[it.key] || 0, watchers, byPrio };
+        return { ...it, total: counts[it.key] || 0, watchers, byPrio, awarded: awardsByItem[it.key] || [] };
       })
-      .filter((it) => (showZero || it.total > 0)
+      .filter((it) => (showZero || it.total > 0 || it.awarded.length > 0)
         && (!category || it.category === category)
         && (it.name.toLowerCase().includes(f) || it.category.toLowerCase().includes(f)))
       .sort((a, b) => (b.total - a.total) || a.name.localeCompare(b.name));
-  }, [counts, tally, filter, category, showZero]);
-
-  const stats = useMemo(() => {
-    const wanted = ALL_ITEMS.filter((it) => (counts[it.key] || 0) > 0).length;
-    const totalPicks = Object.values(counts).reduce((a, n) => a + n, 0);
-    return { wanted, totalPicks };
-  }, [counts]);
+  }, [counts, tally, awardsByItem, filter, category, showZero]);
 
   const toggle = (key) => setOpen((prev) => {
     const next = new Set(prev);
     next.has(key) ? next.delete(key) : next.add(key);
     return next;
   });
+
+  const confirmAward = () => {
+    if (!pending) return;
+    setBusy(true);
+    axios.post('/api/admin/loot/awards', {
+      item_key: pending.item.key, discord_id: pending.watcher.discord_id, display_name: pending.watcher.name,
+    })
+      .then(() => { setPending(null); load(); })
+      .catch((err) => setError(err.response?.data?.error || 'Award failed.'))
+      .finally(() => setBusy(false));
+  };
+
+  const revoke = (id) => {
+    axios.delete(`/api/admin/loot/awards/${id}`).then(load).catch((err) => setError(err.response?.data?.error || 'Revoke failed.'));
+  };
 
   if (!user?.isAdmin) {
     return (
@@ -71,92 +95,138 @@ export default function LootTally() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-12">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <div className="eyebrow text-brass text-[11px] mb-3">War Table</div>
-          <h1 className="font-display text-4xl md:text-5xl text-bone tracking-[0.08em]">Loot Tally</h1>
-          <p className="text-ash mt-2">Every wishlisted item by demand, with who wants it and how.</p>
-        </div>
-        {!loading && !error && (
-          <div className="flex gap-6 text-right">
-            <div><div className="font-mono text-3xl text-brassbright">{stats.wanted}</div><div className="eyebrow text-[10px] text-ash mt-1">items wanted</div></div>
-            <div><div className="font-mono text-3xl text-bone">{stats.totalPicks}</div><div className="eyebrow text-[10px] text-ash mt-1">total picks</div></div>
-          </div>
-        )}
-      </div>
+    <div className="max-w-6xl mx-auto px-6 py-12">
+      <div className="eyebrow text-brass text-[11px] mb-3">War Table</div>
+      <h1 className="font-display text-4xl md:text-5xl text-bone tracking-[0.08em]">Loot Tally</h1>
+      <p className="text-ash mt-2">Every wishlisted item by demand. Award an item to mark it Loot Counciled.</p>
       <div className="rule-fade my-8" />
 
-      <div className="flex flex-wrap items-center gap-3 mb-6">
-        <input
-          value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Search items…"
-          className="bg-panel border border-line rounded-sm px-4 py-2.5 text-bone focus:outline-none focus:border-brass w-full max-w-xs"
-        />
-        <select value={category} onChange={(e) => setCategory(e.target.value)}
-          className="bg-panel border border-line rounded-sm px-3 py-2.5 text-bone focus:outline-none focus:border-brass">
-          <option value="">All categories</option>
-          {LOOT.categories.map((c) => <option key={c.key} value={c.label}>{c.label}</option>)}
-        </select>
-        <label className="inline-flex items-center gap-2 text-sm text-ash cursor-pointer select-none">
-          <input type="checkbox" checked={showZero} onChange={(e) => setShowZero(e.target.checked)} className="accent-brass" />
-          Show unwanted
-        </label>
-        <div className="flex-1" />
-        <button onClick={load} className="inline-flex items-center gap-2 text-sm text-ash hover:text-brass"><RefreshCw className="w-4 h-4" /> Refresh</button>
+      {error && <div className="mb-6 px-5 py-3 rounded-sm border border-oxblood/50 bg-oxblooddeep/20 text-bone text-sm">{error}</div>}
+
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8">
+        {/* Main list */}
+        <div>
+          <div className="flex flex-wrap items-center gap-3 mb-6">
+            <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Search items…"
+              className="bg-panel border border-line rounded-sm px-4 py-2.5 text-bone focus:outline-none focus:border-brass flex-1 min-w-[160px]" />
+            <select value={category} onChange={(e) => setCategory(e.target.value)}
+              className="bg-panel border border-line rounded-sm px-3 py-2.5 text-bone focus:outline-none focus:border-brass">
+              <option value="">All categories</option>
+              {LOOT.categories.map((c) => <option key={c.key} value={c.label}>{c.label}</option>)}
+            </select>
+            <label className="inline-flex items-center gap-2 text-sm text-ash cursor-pointer select-none">
+              <input type="checkbox" checked={showZero} onChange={(e) => setShowZero(e.target.checked)} className="accent-brass" /> Show unwanted
+            </label>
+            <button onClick={load} className="inline-flex items-center gap-2 text-sm text-ash hover:text-brass"><RefreshCw className="w-4 h-4" /></button>
+          </div>
+
+          {loading ? (
+            <div className="py-20 text-center text-ash">Counting the claims…</div>
+          ) : rows.length === 0 ? (
+            <div className="py-20 text-center text-ash">{showZero ? 'No items.' : 'No one has wishlisted anything yet.'}</div>
+          ) : (
+            <div className="panel rounded-sm divide-y divide-line">
+              {rows.map((it) => {
+                const isOpen = open.has(it.key);
+                const canOpen = it.watchers.length > 0;
+                return (
+                  <div key={it.key}>
+                    <button onClick={() => canOpen && toggle(it.key)}
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-left ${canOpen ? 'hover:bg-panelup' : 'cursor-default'} transition-colors`}>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-bone truncate flex items-center gap-2">
+                          {it.name}
+                          {it.awarded.length > 0 && (
+                            <span className="inline-flex items-center gap-1 text-[10px] eyebrow text-brass border border-brass/40 rounded-full px-2 py-0.5 shrink-0">
+                              <Gavel className="w-3 h-3" /> Loot Counciled
+                            </span>
+                          )}
+                        </div>
+                        <div className="eyebrow text-[10px] text-ash mt-0.5">{it.category}</div>
+                      </div>
+                      <div className="hidden sm:flex items-center gap-2 shrink-0">
+                        {LOOT.priorities.map((p) => (
+                          <span key={p} className={`inline-flex items-center gap-1 text-xs font-mono ${it.byPrio[p] ? PRIO_TEXT[p] : 'text-ash/30'}`} title={p}>
+                            <span className={`w-2 h-2 rounded-full ${it.byPrio[p] ? PRIO_DOT[p] : 'bg-line'}`} />{it.byPrio[p]}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="w-8 text-right font-mono text-brassbright shrink-0">{it.total}</div>
+                      <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${canOpen ? 'text-ash' : 'text-transparent'} ${isOpen ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {isOpen && canOpen && (
+                      <div className="px-4 pb-3 space-y-1.5">
+                        {it.watchers.map((w) => {
+                          const award = awardFor(it.key, w.discord_id);
+                          return (
+                            <div key={w.discord_id} className="flex items-center gap-2 text-sm">
+                              <span className={`w-2 h-2 rounded-full ${PRIO_DOT[w.priority] || 'bg-line'} shrink-0`} />
+                              <span className="text-bone">{w.name}</span>
+                              <span className="text-ash text-xs">· {PRIO_SHORT[w.priority] || w.priority}</span>
+                              <div className="flex-1" />
+                              {award ? (
+                                <span className="inline-flex items-center gap-1 text-xs text-brass">
+                                  <Gavel className="w-3 h-3" /> Awarded
+                                  <button onClick={() => revoke(award.id)} className="ml-1 text-ash hover:text-oxblood" title="Revoke"><X className="w-3 h-3" /></button>
+                                </span>
+                              ) : (
+                                <button onClick={() => setPending({ item: it, watcher: w })}
+                                  className="inline-flex items-center gap-1 text-xs px-2.5 py-1 border border-brass/50 text-brassbright hover:bg-panelup rounded-sm transition-colors">
+                                  <Gavel className="w-3 h-3" /> Award
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Awarded tracker sidebar */}
+        <aside className="lg:sticky lg:top-20 self-start">
+          <div className="panel rounded-sm p-4">
+            <div className="eyebrow text-[10px] text-brass flex items-center gap-2 mb-4"><ScrollText className="w-3.5 h-3.5" /> Awarded ({awards.length})</div>
+            {awards.length === 0 ? (
+              <p className="text-ash text-sm">Nothing awarded yet. Expand an item and award it to a member.</p>
+            ) : (
+              <div className="space-y-3 max-h-[640px] overflow-auto pr-1">
+                {awards.map((a) => (
+                  <div key={a.id} className="flex items-start gap-2 border-b border-line/50 pb-3 last:border-0">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm text-bone truncate">{ITEM_BY_KEY[a.item_key]?.name || a.item_key}</div>
+                      <div className="text-xs text-brass truncate">{a.display_name || 'Member'}</div>
+                      <div className="text-[10px] text-ash mt-0.5">{a.awarded_at ? new Date(a.awarded_at).toLocaleDateString() : ''}{a.awarded_by ? ` · by ${a.awarded_by}` : ''}</div>
+                    </div>
+                    <button onClick={() => revoke(a.id)} className="text-ash hover:text-oxblood shrink-0" title="Revoke"><X className="w-4 h-4" /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </aside>
       </div>
 
-      {error ? (
-        <div className="panel rounded-sm p-8 text-center">
-          <p className="text-ash mb-6">{error}</p>
-          <button onClick={load} className="px-6 py-2.5 bg-brass hover:bg-brassbright text-ink font-semibold rounded-sm">Try again</button>
-        </div>
-      ) : loading ? (
-        <div className="py-20 text-center text-ash">Counting the claims…</div>
-      ) : rows.length === 0 ? (
-        <div className="py-20 text-center text-ash">{showZero ? 'No items.' : 'No one has wishlisted anything yet.'}</div>
-      ) : (
-        <div className="panel rounded-sm divide-y divide-line">
-          {rows.map((it) => {
-            const isOpen = open.has(it.key);
-            const canOpen = it.watchers.length > 0;
-            return (
-              <div key={it.key}>
-                <button
-                  onClick={() => canOpen && toggle(it.key)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 text-left ${canOpen ? 'hover:bg-panelup' : 'cursor-default'} transition-colors`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="text-bone truncate">{it.name}</div>
-                    <div className="eyebrow text-[10px] text-ash mt-0.5">{it.category}</div>
-                  </div>
-
-                  <div className="hidden sm:flex items-center gap-2 shrink-0">
-                    {LOOT.priorities.map((p) => (
-                      <span key={p} className={`inline-flex items-center gap-1 text-xs font-mono ${it.byPrio[p] ? PRIO_TEXT[p] : 'text-ash/30'}`} title={p}>
-                        <span className={`w-2 h-2 rounded-full ${it.byPrio[p] ? PRIO_DOT[p] : 'bg-line'}`} />
-                        {it.byPrio[p]}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className="w-10 text-right font-mono text-brassbright shrink-0">{it.total}</div>
-                  <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${canOpen ? 'text-ash' : 'text-transparent'} ${isOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                {isOpen && canOpen && (
-                  <div className="px-4 pb-3 flex flex-wrap gap-2">
-                    {it.watchers.map((w, idx) => (
-                      <span key={idx} className="inline-flex items-center gap-1.5 text-xs bg-hall border border-line rounded-full px-3 py-1 text-bone">
-                        <span className={`w-2 h-2 rounded-full ${PRIO_DOT[w.priority] || 'bg-line'}`} />
-                        {w.name}
-                        <span className="text-ash">· {PRIO_SHORT[w.priority] || w.priority}</span>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+      {/* Confirmation modal */}
+      {pending && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-ink/70 backdrop-blur-sm" onClick={() => !busy && setPending(null)}>
+          <div className="panel rounded-sm p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 text-brass eyebrow text-[11px] mb-3"><Gavel className="w-4 h-4" /> Loot Council</div>
+            <h2 className="font-display text-xl text-bone tracking-[0.06em] mb-2">Award this item?</h2>
+            <p className="text-ash text-sm mb-1">Award <span className="text-bone font-medium">{pending.item.name}</span> to <span className="text-bone font-medium">{pending.watcher.name}</span>.</p>
+            <p className="text-ash text-sm mb-6">It will be marked <span className="text-brass">Loot Counciled</span> on the tally and on their wishlist.</p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setPending(null)} disabled={busy} className="px-4 py-2 text-ash hover:text-bone transition-colors disabled:opacity-40">Cancel</button>
+              <button onClick={confirmAward} disabled={busy} className="inline-flex items-center gap-2 px-5 py-2 bg-brass hover:bg-brassbright text-ink font-semibold rounded-sm transition-colors disabled:opacity-40">
+                <Gavel className="w-4 h-4" /> {busy ? 'Awarding…' : 'Award'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

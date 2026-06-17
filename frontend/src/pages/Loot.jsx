@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import axios from 'axios';
 import { useAuth } from '../auth';
 import LOOT from '../../../shared/loot.json';
-import { Users, Check, Loader2, ChevronDown } from 'lucide-react';
+import { Users, Check, Loader2, ChevronDown, Gavel } from 'lucide-react';
 
 const PRIO_SHORT = { 'PvP': 'PvP', 'Second Build': '2nd', 'PvE': 'PvE' };
 const PRIO_STYLE = {
@@ -16,6 +16,7 @@ export default function Loot() {
   const [picks, setPicks] = useState({});
   const [counts, setCounts] = useState({});
   const [tally, setTally] = useState(null);   // admin only
+  const [awarded, setAwarded] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saveState, setSaveState] = useState(null); // 'saving' | 'saved'
@@ -26,7 +27,7 @@ export default function Loot() {
   const load = () => {
     setLoading(true); setError('');
     axios.get('/api/loot')
-      .then((res) => { setPicks(res.data.mine || {}); setCounts(res.data.counts || {}); setTally(res.data.tally || null); })
+      .then((res) => { setPicks(res.data.mine || {}); setCounts(res.data.counts || {}); setTally(res.data.tally || null); setAwarded(new Set(res.data.awarded || [])); })
       .catch((err) => setError(err.response?.data?.error || 'Could not load the wishlist.'))
       .finally(() => setLoading(false));
   };
@@ -122,7 +123,12 @@ export default function Loot() {
                           </button>
                         )}
 
-                        {/* priority chips */}
+                        {/* priority chips, or a locked Loot Counciled badge if awarded */}
+                        {awarded.has(item.key) ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] eyebrow text-brass border border-brass/40 rounded-full px-2.5 py-1 shrink-0">
+                            <Gavel className="w-3 h-3" /> Loot Counciled
+                          </span>
+                        ) : (
                         <div className="flex gap-1.5 shrink-0">
                           {LOOT.priorities.map((p) => {
                             const st = PRIO_STYLE[p];
@@ -137,6 +143,7 @@ export default function Loot() {
                             );
                           })}
                         </div>
+                        )}
                       </div>
 
                       {isOpen && tally && (
