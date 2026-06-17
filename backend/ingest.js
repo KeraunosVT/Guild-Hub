@@ -15,7 +15,7 @@ const LEGEND_PATH = process.env.WEAPON_LEGEND_PATH || path.join(__dirname, 'asse
 
 // The exact weapon tokens our class map understands ("Unknown" is allowed when
 // the icon can't be identified, and gets flagged for review).
-const WEAPONS = ['SnS', 'Greatsword', 'Daggers', 'Crossbow', 'Longbow', 'Staff', 'Wand', 'Spear', 'Orb'];
+const WEAPONS = ['SnS', 'Greatsword', 'Dagger', 'Crossbow', 'Longbow', 'Staff', 'Wand', 'Spear', 'Orb'];
 
 // ── Legend image (cached) ────────────────────────────────────────────────────
 let _legendPart; // undefined = not checked, null = absent
@@ -58,7 +58,7 @@ WEAPON POSITION RULES:
 CRITICAL WEAPON IDENTIFICATION RULES:
 - Greatsword: a tall single straight blade with a wide crossguard and NO shield. This is the most common weapon — when you see a single sword shape, it is almost always Greatsword.
 - SnS: ALWAYS has a visible shield (round or rectangular) with a sword behind or beside it. If there is NO shield present, it is NOT SnS.
-- Daggers: two short blades crossed in an X shape.
+- Dagger: two short blades crossed in an X shape.
 - Longbow: two diagonal lines forming a narrow arc shape (the bow + string side by side).
 - Spear: a single long pole with a pointed trident tip at the top.
 - Crossbow: a horizontal bow mounted on a vertical stock, forming a cross/T shape.
@@ -66,9 +66,9 @@ CRITICAL WEAPON IDENTIFICATION RULES:
 - Wand: a DARK SQUARE icon showing a tall rectangular tome/book standing upright, with a thin wand rod leaning against or attached to it. The tome is the dominant shape — it looks like a book standing on its side. NOT a shield.
 - DO NOT default to SnS when uncertain — Greatsword is far more likely for any single sword icon.
 - DO NOT confuse Wand and Longbow — Longbow has two lines, Wand has a rod attached to a tome.
-- DO NOT confuse Spear and Daggers — Spear is a single long pole, Daggers are two crossed short blades.
+- DO NOT confuse Spear and Dagger — Spear is a single long pole, Dagger are two crossed short blades.
 ${hasLegend ? '- Compare each scoreboard icon against the legend in Image 1 before deciding.\n' : ''}- If still uncertain about a weapon, use "Unknown" rather than guessing.
-- The ONLY valid weapon names are: Wand, Longbow, Orb, Greatsword, Spear, Daggers, Crossbow, SnS, Staff, Unknown.
+- The ONLY valid weapon names are: Wand, Longbow, Orb, Greatsword, Spear, Dagger, Crossbow, SnS, Staff, Unknown.
 
 OTHER RULES:
 - EXCLUDE the pinned "My Rank" summary row at the very top of the board — it duplicates that player's own ranked line and must NOT appear in the output.
