@@ -58,9 +58,9 @@ export default function PlayerProfile() {
 
   const averages = [
     { label: 'Avg Kills', value: fmtAvg(p.avg_kills) },
+    { label: 'Avg Assists', value: fmtAvg(p.avg_assists) },
     { label: 'Avg Damage', value: fmtM(p.avg_damage) },
     { label: 'Avg Healing', value: fmtM(p.avg_healing) },
-    { label: 'Avg K+A', value: fmtAvg((p.kills + p.assists) / m) },
   ];
 
   return (

@@ -240,6 +240,7 @@ app.get('/api/player/:name', async (req, res) => {
       matches: total,
       kills, assists, damage_dealt, damage_taken, healing,
       avg_kills: total ? kills / total : 0,
+      avg_assists: total ? assists / total : 0,
       avg_damage: total ? damage_dealt / total : 0,
       avg_healing: total ? healing / total : 0,
       classBreakdown,
