@@ -1,6 +1,8 @@
-import { Sword, Target, Heart, Users, ShieldAlert } from 'lucide-react';
+import { Sword, Target, Heart, Users, ShieldAlert, Pencil } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import axios from 'axios';
+import { useAuth } from '../auth';
 import weaponToClass from '../../../shared/weaponClasses.json';
 
 function getClassName(weapon1, weapon2) {
@@ -15,6 +17,7 @@ function getClassName(weapon1, weapon2) {
 }
 
 export default function MatchStats() {
+  const { user } = useAuth();
   const [matches, setMatches] = useState([]);
   const [selectedMatchId, setSelectedMatchId] = useState(null);
   const [matchDetail, setMatchDetail] = useState(null);
@@ -114,7 +117,18 @@ export default function MatchStats() {
 
       {selectedMatch && !detailError && (
         <>
-          <h2 className="font-display text-3xl text-brassbright tracking-[0.06em] mb-1">{selectedMatch.title}</h2>
+          <div className="flex items-center gap-4 mb-1">
+            <h2 className="font-display text-3xl text-brassbright tracking-[0.06em]">{selectedMatch.title}</h2>
+            {user?.isAdmin && (
+              <Link
+                to={`/admin?edit=${selectedMatch.id}`}
+                className="inline-flex items-center gap-1.5 text-sm text-ash hover:text-brass transition-colors"
+                title="Edit this match"
+              >
+                <Pencil className="w-4 h-4" /> Edit
+              </Link>
+            )}
+          </div>
           <p className="text-ash mb-12">
             {new Date(selectedMatch.match_date).toLocaleDateString('en-US', {
               weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',

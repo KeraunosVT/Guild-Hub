@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../auth';
 import Sigil from '../components/Sigil';
@@ -42,6 +42,8 @@ const emptyRow = () => ({
 
 export default function Admin() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   const [items, setItems] = useState([]); // {id,file,status:'idle'|'processing'|'done'|'failed',players,error,retryable}
   const [title, setTitle] = useState('');
@@ -54,6 +56,8 @@ export default function Admin() {
   const [error, setError] = useState('');
   const [done, setDone] = useState(null);
   const [mappedNames, setMappedNames] = useState(null); // Set of normalized known names
+  const [editingMatchId, setEditingMatchId] = useState(null);
+  const [loadingEdit, setLoadingEdit] = useState(false);
 
   // Load known names so the review table can flag unrecognized ones.
   useEffect(() => {
@@ -68,6 +72,29 @@ export default function Admin() {
       })
       .catch(() => setMappedNames(new Set()));
   }, []);
+
+  // Load existing match when ?edit=<id> is in the URL.
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (!editId) return;
+    setLoadingEdit(true);
+    setError('');
+    axios.get(`/api/admin/match/${editId}`)
+      .then((res) => {
+        const m = res.data.match;
+        setEditingMatchId(editId);
+        setTitle(m.title || '');
+        setMatchDate(m.match_date ? m.match_date.slice(0, 10) : '');
+        setPlayers(res.data.players || []);
+        setWarnings([]);
+        setDone(null);
+        setItems([]);
+      })
+      .catch((err) => {
+        setError(err.response?.data?.error || 'Failed to load match for editing.');
+      })
+      .finally(() => setLoadingEdit(false));
+  }, [searchParams]);
 
   const isUnknown = (name) => {
     if (!mappedNames) return false; // don't flag until loaded
@@ -159,9 +186,18 @@ export default function Admin() {
   const commit = async () => {
     setCommitting(true); setError('');
     try {
-      const res = await axios.post('/api/admin/match/commit', { title, match_date: matchDate, players });
-      setDone(res.data);
+      let res;
+      if (editingMatchId) {
+        res = await axios.put(`/api/admin/match/${editingMatchId}`, { title, match_date: matchDate, players });
+      } else {
+        res = await axios.post('/api/admin/match/commit', { title, match_date: matchDate, players });
+      }
+      setDone(editingMatchId ? { ...res.data, edited: true } : res.data);
       setPlayers(null); setItems([]); setTitle(''); setMatchDate(''); setWarnings([]);
+      if (editingMatchId) {
+        setEditingMatchId(null);
+        setSearchParams({});
+      }
     } catch (err) {
       setError(err.response?.data?.error || 'Could not save the match.');
     } finally {
@@ -172,14 +208,25 @@ export default function Admin() {
   return (
     <div className="max-w-7xl mx-auto px-6 py-12">
       <div className="eyebrow text-brass text-[11px] mb-3">War Table</div>
-      <h1 className="font-display text-4xl md:text-5xl text-bone tracking-[0.08em]">Upload a Match</h1>
-      <p className="text-ash mt-2">Read results screenshots or a CSV, review every row, then commit it to the record.</p>
+      <h1 className="font-display text-4xl md:text-5xl text-bone tracking-[0.08em]">
+        {editingMatchId ? 'Edit Match' : 'Upload a Match'}
+      </h1>
+      <p className="text-ash mt-2">
+        {editingMatchId
+          ? 'Revise the record — update any row, then save your changes.'
+          : 'Read results screenshots or a CSV, review every row, then commit it to the record.'}
+      </p>
       <div className="rule-fade my-10" />
 
       {done && (
         <div className="mb-8 panel rounded-sm p-6 border-brass/40">
-          <div className="font-display text-brassbright text-lg tracking-[0.06em] mb-1">Logged to the record</div>
-          <p className="text-ash">{done.inserted} players saved. <Link to="/war-record" className="text-brass hover:text-brassbright">View the war record →</Link></p>
+          <div className="font-display text-brassbright text-lg tracking-[0.06em] mb-1">
+            {done.edited ? 'Record updated' : 'Logged to the record'}
+          </div>
+          <p className="text-ash">
+            {done.edited ? `${done.updated} players updated.` : `${done.inserted} players saved.`}
+            {' '}<Link to="/war-record" className="text-brass hover:text-brassbright">View the war record →</Link>
+          </p>
         </div>
       )}
 
@@ -187,8 +234,14 @@ export default function Admin() {
         <div className="mb-8 px-5 py-4 border border-oxblood/50 bg-oxblooddeep/20 rounded-sm text-bone">{error}</div>
       )}
 
+      {loadingEdit && (
+        <div className="py-20 text-center text-ash flex items-center justify-center gap-2">
+          <Loader2 className="w-5 h-5 animate-spin" /> Loading match…
+        </div>
+      )}
+
       {/* Step 1 — upload */}
-      {!players && (
+      {!players && !loadingEdit && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-4">
             <label className="block panel rounded-sm border-dashed border-2 border-line hover:border-brass/50 transition-colors cursor-pointer p-10 text-center">
@@ -310,8 +363,30 @@ export default function Admin() {
             </div>
           )}
 
+          {editingMatchId && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="eyebrow text-[10px] text-ash block mb-2">Match title</label>
+                <input
+                  value={title} onChange={(e) => setTitle(e.target.value)}
+                  placeholder="e.g. Castle Siege — Abyssal"
+                  className="w-full bg-panel border border-line rounded-sm px-4 py-2.5 text-bone focus:outline-none focus:border-brass"
+                />
+              </div>
+              <div>
+                <label className="eyebrow text-[10px] text-ash block mb-2">Match date</label>
+                <input
+                  type="date" value={matchDate} onChange={(e) => setMatchDate(e.target.value)}
+                  className="w-full bg-panel border border-line rounded-sm px-4 py-2.5 text-bone focus:outline-none focus:border-brass"
+                />
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display text-2xl text-bone tracking-[0.08em]">Review — {players.length} players</h2>
+            <h2 className="font-display text-2xl text-bone tracking-[0.08em]">
+              {editingMatchId ? 'Edit' : 'Review'} — {players.length} players
+            </h2>
             <button onClick={addRow} className="inline-flex items-center gap-2 text-sm text-brass hover:text-brassbright">
               <Plus className="w-4 h-4" /> Add row
             </button>
@@ -388,10 +463,16 @@ export default function Admin() {
               onClick={commit} disabled={committing || players.length === 0}
               className="px-8 py-3 bg-brass hover:bg-brassbright text-ink font-semibold rounded-sm transition-colors disabled:opacity-40"
             >
-              {committing ? 'Saving…' : `Commit ${players.length} players`}
+              {committing ? 'Saving…' : editingMatchId ? `Save ${players.length} players` : `Commit ${players.length} players`}
             </button>
-            <button onClick={() => { setPlayers(null); setWarnings([]); }} className="px-6 py-3 text-ash hover:text-bone transition-colors">
-              Discard
+            <button
+              onClick={() => {
+                setPlayers(null); setWarnings([]);
+                if (editingMatchId) { setEditingMatchId(null); setSearchParams({}); setTitle(''); setMatchDate(''); }
+              }}
+              className="px-6 py-3 text-ash hover:text-bone transition-colors"
+            >
+              {editingMatchId ? 'Cancel edit' : 'Discard'}
             </button>
             <span className="text-sm text-ash">{title || 'Untitled match'}{matchDate ? ` · ${matchDate}` : ''}</span>
           </div>
