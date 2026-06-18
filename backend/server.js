@@ -167,6 +167,90 @@ app.get('/api/players', async (req, res) => {
   }
 });
 
+// ── PLAYER PROFILE ──────────────────────────────────────────────────────────
+app.get('/api/player/:name', async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+  try {
+    const requestedName = decodeURIComponent(req.params.name).trim();
+    const lower = requestedName.toLowerCase();
+
+    // Resolve all in-game names this player might appear as via identities.
+    const { data: ids } = await supabase.from('player_identities')
+      .select('display_name, ingame_names');
+    let names = [requestedName];
+    let displayName = requestedName;
+    (ids || []).forEach((it) => {
+      const all = [it.display_name, ...(Array.isArray(it.ingame_names) ? it.ingame_names : [])].filter(Boolean);
+      if (all.some((n) => n.toLowerCase() === lower)) {
+        displayName = it.display_name || requestedName;
+        names = all;
+      }
+    });
+
+    // Pull every match row for those names (our guild only).
+    const guildNames = Object.keys(GUILD_ALIASES);
+    const { data: rows, error: rErr } = await supabase
+      .from('player_match_stats')
+      .select('*, wargame_matches!inner(id, title, match_date)')
+      .in('player_name', names)
+      .in('guild_name', guildNames);
+    if (rErr) throw rErr;
+    if (!rows || rows.length === 0) return res.status(404).json({ error: 'Player not found.' });
+
+    // Aggregate totals.
+    let kills = 0, assists = 0, damage_dealt = 0, damage_taken = 0, healing = 0;
+    const classCount = {};
+    const matches = [];
+
+    rows.forEach((r) => {
+      kills += Number(r.kills) || 0;
+      assists += Number(r.assists) || 0;
+      damage_dealt += Number(r.damage_dealt) || 0;
+      damage_taken += Number(r.damage_taken) || 0;
+      healing += Number(r.healing) || 0;
+
+      const cls = getClassNameBackend(r.weapon_1, r.weapon_2);
+      classCount[cls] = (classCount[cls] || 0) + 1;
+
+      matches.push({
+        match_id: r.wargame_matches.id,
+        title: r.wargame_matches.title,
+        match_date: r.wargame_matches.match_date,
+        rank: r.rank,
+        weapon_1: r.weapon_1,
+        weapon_2: r.weapon_2,
+        kills: Number(r.kills) || 0,
+        assists: Number(r.assists) || 0,
+        damage_dealt: Number(r.damage_dealt) || 0,
+        damage_taken: Number(r.damage_taken) || 0,
+        healing: Number(r.healing) || 0,
+      });
+    });
+
+    matches.sort((a, b) => new Date(b.match_date || 0) - new Date(a.match_date || 0));
+
+    const total = matches.length;
+    const classBreakdown = Object.entries(classCount)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+
+    res.json({
+      name: displayName,
+      aliases: names.length > 1 ? names.filter((n) => n.toLowerCase() !== displayName.toLowerCase()) : [],
+      matches: total,
+      kills, assists, damage_dealt, damage_taken, healing,
+      avg_kills: total ? kills / total : 0,
+      avg_damage: total ? damage_dealt / total : 0,
+      avg_healing: total ? healing / total : 0,
+      classBreakdown,
+      matchHistory: matches,
+    });
+  } catch (err) {
+    console.error('Player profile error:', err.message);
+    res.status(500).json({ error: 'Failed to load player profile.' });
+  }
+});
+
 // ── STATS SUMMARY ────────────────────────────────────────────────────────────
 app.get('/api/stats/summary', async (req, res) => {
   if (!supabase) {

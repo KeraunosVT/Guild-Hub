@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { ArrowUp, ArrowDown } from 'lucide-react';
 
@@ -7,7 +8,7 @@ const fmtM = (n) => ((Number(n) || 0) / 1e6).toFixed(1) + 'M';
 const fmtAvg = (n) => (Number(n) || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
 
 const COLUMNS = [
-  { key: 'player_name',  label: 'Player',       align: 'left',  render: (p) => p.player_name, cls: 'font-semibold text-bone' },
+  { key: 'player_name',  label: 'Player',       align: 'left',  render: (p) => <Link to={`/roster/${encodeURIComponent(p.player_name)}`} className="hover:text-brassbright transition-colors">{p.player_name}</Link>, cls: 'font-semibold text-bone' },
   { key: 'matches',      label: 'Matches',      align: 'right', render: (p) => fmt(p.matches) },
   { key: 'kills',        label: 'Kills',        align: 'right', render: (p) => fmt(p.kills), cls: 'text-brassbright' },
   { key: 'assists',      label: 'Assists',      align: 'right', render: (p) => fmt(p.assists) },
