@@ -15,6 +15,7 @@ import Names from './pages/Names';
 import LootTally from './pages/LootTally';
 import Attendance from './pages/Attendance';
 import PlayerProfile from './pages/PlayerProfile';
+import Classes from './pages/Classes';
 
 function Layout() {
   return (
@@ -53,6 +54,7 @@ function Gate() {
           <Route path="/roster/:name" element={<PlayerProfile />} />
           <Route path="/shards" element={<Shards />} />
           <Route path="/loot" element={<Loot />} />
+          <Route path="/classes" element={<Classes />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/admin/parties" element={<Parties />} />
           <Route path="/admin/names" element={<Names />} />

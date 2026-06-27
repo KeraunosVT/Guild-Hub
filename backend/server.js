@@ -14,6 +14,7 @@ const SHARDS = require('../shared/shards.json');
 const LOOT = require('../shared/loot.json');
 const LOOT_KEYS = new Set(LOOT.categories.flatMap((c) => c.items.map((i) => i.key)));
 const LOOT_PRIORITIES = new Set(LOOT.priorities);
+const WEAPON_CLASSES = new Set(Object.values(require('../shared/weaponClasses.json')));
 
 const gateway = require('./discordGateway');
 gateway.start();
@@ -104,6 +105,39 @@ app.put('/api/shards/:discordId', async (req, res) => {
     .upsert({ discord_id: target, display_name, shards, updated_at: new Date().toISOString() });
   if (error) { console.error('Shard save error:', error.message); return res.status(500).json({ error: 'Failed to save shards.' }); }
   res.json({ shards });
+});
+
+// ── MEMBERS AREA: PvP / PvE class selection ─────────────────────────────────
+// Members choose their own classes; admins can edit anyone's.
+app.get('/api/classes', async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+  try {
+    const members = await listMembers();
+    const { data } = await supabase.from('member_classes').select('discord_id, pvp_class, pve_class');
+    const classMap = {};
+    (data || []).forEach((r) => { classMap[r.discord_id] = { pvp_class: r.pvp_class || '', pve_class: r.pve_class || '' }; });
+    res.json({
+      members: members.map((m) => ({ ...m, ...(classMap[m.id] || { pvp_class: '', pve_class: '' }) })),
+    });
+  } catch (err) {
+    console.error('Classes load error:', err.message);
+    res.status(502).json({ error: err.response?.data?.message || err.message });
+  }
+});
+
+app.put('/api/classes/:discordId', async (req, res) => {
+  const target = req.params.discordId;
+  if (req.user.id !== target && !req.user.isAdmin) {
+    return res.status(403).json({ error: 'You can only edit your own classes.' });
+  }
+  if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+  const pvp_class = WEAPON_CLASSES.has(req.body?.pvp_class) ? req.body.pvp_class : '';
+  const pve_class = WEAPON_CLASSES.has(req.body?.pve_class) ? req.body.pve_class : '';
+  const display_name = (req.body?.display_name || req.user.username || '').slice(0, 120);
+  const { error } = await supabase.from('member_classes')
+    .upsert({ discord_id: target, pvp_class, pve_class, display_name, updated_at: new Date().toISOString() });
+  if (error) { console.error('Class save error:', error.message); return res.status(500).json({ error: 'Failed to save classes.' }); }
+  res.json({ pvp_class, pve_class });
 });
 
 // ── MEMBERS AREA: Loot wishlist ──────────────────────────────────────────────

@@ -27,6 +27,7 @@ export default function Parties() {
   const { user } = useAuth();
 
   const [members, setMembers] = useState([]);
+  const [memberClasses, setMemberClasses] = useState({});
   const [extra, setExtra] = useState({});
   const [items, setItems] = useState(initItems);
   const [partyNames, setPartyNames] = useState(initNames);
@@ -45,10 +46,10 @@ export default function Parties() {
 
   const byId = useMemo(() => {
     const m = {};
-    members.forEach((x) => { m[x.id] = x; });
-    Object.values(extra).forEach((x) => { if (!m[x.id]) m[x.id] = x; });
+    members.forEach((x) => { m[x.id] = { ...x, ...(memberClasses[x.id] || {}) }; });
+    Object.values(extra).forEach((x) => { if (!m[x.id]) m[x.id] = { ...x, ...(memberClasses[x.id] || {}) }; });
     return m;
-  }, [members, extra]);
+  }, [members, memberClasses, extra]);
 
   const poolView = useMemo(
     () => items.pool.filter((id) => (byId[id]?.name || '').toLowerCase().includes(filter.toLowerCase())),
@@ -75,11 +76,20 @@ export default function Parties() {
       .catch((err) => setMembersError(err.response?.data?.error || 'Could not load members.'))
       .finally(() => setLoadingMembers(false));
   };
+  const loadClasses = () => {
+    axios.get('/api/classes')
+      .then((res) => {
+        const map = {};
+        (res.data.members || []).forEach((m) => { map[m.id] = { pvp_class: m.pvp_class || '', pve_class: m.pve_class || '' }; });
+        setMemberClasses(map);
+      })
+      .catch(() => {});
+  };
   const loadSaved = () => {
     axios.get('/api/admin/rosters').then((res) => setSaved(res.data.rosters || [])).catch(() => {});
   };
 
-  useEffect(() => { loadMembers(); loadSaved(); }, []);
+  useEffect(() => { loadMembers(); loadClasses(); loadSaved(); }, []);
 
   if (!user?.isAdmin) {
     return (
@@ -311,6 +321,8 @@ function SortableMember(props) {
 
 const MemberCardBase = forwardRef(function MemberCardBase({ member, role, onRole, inParty, overlay, style, handle, isDragging }, ref) {
   const rs = ROLE_STYLE[role];
+  const pvp = member.pvp_class || '';
+  const pve = member.pve_class || '';
   return (
     <div
       ref={ref} style={style} {...handle}
@@ -319,7 +331,15 @@ const MemberCardBase = forwardRef(function MemberCardBase({ member, role, onRole
       {member.avatar
         ? <img src={member.avatar} alt="" className="w-6 h-6 rounded-full border border-line shrink-0" />
         : <span className="w-6 h-6 rounded-full bg-panelup border border-line shrink-0 flex items-center justify-center text-[10px] text-brass">{(member.name || '?').slice(0, 1).toUpperCase()}</span>}
-      <span className={`text-sm truncate flex-1 ${member.missing ? 'text-ash italic' : 'text-bone'}`} title={member.missing ? 'No longer in the server' : member.name}>{member.name}</span>
+      <div className="min-w-0 flex-1">
+        <span className={`text-sm truncate block ${member.missing ? 'text-ash italic' : 'text-bone'}`} title={member.missing ? 'No longer in the server' : member.name}>{member.name}</span>
+        {(pvp || pve) && (
+          <div className="flex gap-2 mt-0.5">
+            {pvp && <span className="text-[10px] text-oxblood" title="PvP class">⚔ {pvp}</span>}
+            {pve && <span className="text-[10px] text-emerald-400" title="PvE class">☘ {pve}</span>}
+          </div>
+        )}
+      </div>
       {onRole && (
         <div className="flex gap-1 opacity-60 group-hover:opacity-100 transition-opacity" onPointerDown={(e) => e.stopPropagation()}>
           {ROLES.map((r) => (

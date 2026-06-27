@@ -14,6 +14,7 @@ const topLinks = [
 const membersLinks = [
   { to: '/shards', label: 'Shards' },
   { to: '/loot', label: 'Loot' },
+  { to: '/classes', label: 'Classes' },
 ];
 
 const adminLinks = [
