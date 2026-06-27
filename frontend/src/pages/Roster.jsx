@@ -15,7 +15,8 @@ const COLUMNS = [
   { key: 'damage_dealt', label: 'Dmg Dealt',    align: 'right', render: (p) => fmtM(p.damage_dealt) },
   { key: 'damage_taken', label: 'Dmg Taken',    align: 'right', render: (p) => fmtM(p.damage_taken) },
   { key: 'healing',      label: 'Healing',      align: 'right', render: (p) => fmtM(p.healing) },
-  { key: 'avg_ka',       label: 'Avg K+A',      align: 'right', render: (p) => fmtAvg(p.avg_ka),     cls: 'text-brassbright' },
+  { key: 'avg_kills',    label: 'Avg Kills',    align: 'right', render: (p) => fmtAvg(p.avg_kills),   cls: 'text-brassbright' },
+  { key: 'avg_assists',  label: 'Avg Assists',  align: 'right', render: (p) => fmtAvg(p.avg_assists) },
   { key: 'avg_dealt',    label: 'Avg Dmg',      align: 'right', render: (p) => fmtM(p.avg_dealt) },
   { key: 'avg_healing',  label: 'Avg Healing',  align: 'right', render: (p) => fmtM(p.avg_healing) },
 ];
@@ -36,7 +37,8 @@ export default function Roster() {
         const per = (v) => (m ? (Number(v) || 0) / m : 0);
         return {
           ...p,
-          avg_ka: per((Number(p.kills) || 0) + (Number(p.assists) || 0)),
+          avg_kills: per(p.kills),
+          avg_assists: per(p.assists),
           avg_dealt: per(p.damage_dealt),
           avg_healing: per(p.healing),
         };

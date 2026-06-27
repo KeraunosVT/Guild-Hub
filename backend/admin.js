@@ -422,6 +422,84 @@ module.exports = function createAdminRouter(supabase, gateway) {
     res.json({ match_id: matchId, inserted: rows.length });
   });
 
+  // ── Load an existing match for editing ───────────────────────────────────────
+  router.get('/match/:id', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    const { data: match, error: mErr } = await supabase
+      .from('wargame_matches').select('*').eq('id', req.params.id).single();
+    if (mErr) return res.status(404).json({ error: 'Match not found.' });
+    const { data: players, error: pErr } = await supabase
+      .from('player_match_stats').select('*').eq('match_id', req.params.id)
+      .order('rank', { ascending: true });
+    if (pErr) return res.status(500).json({ error: 'Failed to load players.' });
+    res.json({ match, players: players || [] });
+  });
+
+  // ── Update an existing match (metadata + replace all player rows) ──────────
+  router.put('/match/:id', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+
+    const { title, match_date, players } = req.body || {};
+    if (!Array.isArray(players) || players.length === 0) {
+      return res.status(400).json({ error: 'No players to save.' });
+    }
+
+    const matchId = req.params.id;
+
+    const { data: existing, error: chk } = await supabase
+      .from('wargame_matches').select('id').eq('id', matchId).single();
+    if (chk || !existing) return res.status(404).json({ error: 'Match not found.' });
+
+    const { error: mErr } = await supabase.from('wargame_matches')
+      .update({ title: clean(title) || 'Wargame', match_date: clean(match_date) })
+      .eq('id', matchId);
+    if (mErr) {
+      console.error('Match update error:', mErr.message);
+      return res.status(500).json({ error: 'Failed to update match.' });
+    }
+
+    const { error: dErr } = await supabase.from('player_match_stats').delete().eq('match_id', matchId);
+    if (dErr) {
+      console.error('Player delete error:', dErr.message);
+      return res.status(500).json({ error: 'Failed to replace players.' });
+    }
+
+    const nowIso = new Date().toISOString();
+    const rows = players.map((p) => ({
+      id: crypto.randomUUID(),
+      match_id: matchId,
+      rank: toInt(p.rank),
+      weapon_1: clean(p.weapon_1),
+      weapon_2: clean(p.weapon_2),
+      guild_name: clean(p.guild_name),
+      player_name: clean(p.player_name),
+      team_color: team(p.team_color),
+      kills: toInt(p.kills),
+      assists: toInt(p.assists),
+      damage_dealt: toInt(p.damage_dealt),
+      damage_taken: toInt(p.damage_taken),
+      healing: toInt(p.healing),
+      created_at: nowIso,
+    }));
+
+    const { error: pErr } = await supabase.from('player_match_stats').insert(rows);
+    if (pErr) {
+      console.error('Players re-insert error:', pErr.message);
+      return res.status(500).json({ error: 'Failed to save updated players.' });
+    }
+
+    res.json({ match_id: matchId, updated: rows.length });
+  });
+
+  // ── Delete a match and its player rows ─────────────────────────────────────
+  router.delete('/match/:id', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database not configured.' });
+    await supabase.from('player_match_stats').delete().eq('match_id', req.params.id);
+    const { error } = await supabase.from('wargame_matches').delete().eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: 'Failed to delete match.' });
+    res.json({ ok: true });
+  });
+
   // ── Attendance: voice-channel snapshots ──────────────────────────────────────
   router.get('/voice-channels', (req, res) => {
     if (!gateway) return res.status(503).json({ error: 'Discord gateway not available.' });
